@@ -97,7 +97,6 @@ fn unsupported_options_fail_with_clear_message() {
         vec!["--custom", "foo.py"],
         vec!["--pre", "pre.txt"],
         vec!["--post", "post.txt"],
-        vec!["--nat"],
         vec!["--cluster", "srv1,srv2"],
         vec!["--innamespace"],
     ] {
@@ -127,5 +126,33 @@ fn unknown_option_is_an_error() {
     assert!(
         stderr.contains("--bogus"),
         "error should name the unknown option, stderr: {stderr}"
+    );
+}
+
+#[test]
+fn nat_flag_builds_nat0_in_dry_run_dump() {
+    // --nat is wired: nat0 appears as a host connected to the first switch,
+    // and hosts get defaultRoute via the NAT IP (visible in the dump repr).
+    let output = run_mn(&[
+        "--topo",
+        "single,2",
+        "--controller",
+        "none",
+        "--nat",
+        "--dump",
+    ]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("nat0"),
+        "dump should contain nat0: {stdout}"
+    );
+    assert!(
+        stdout.contains("nat0-eth0<->s1-eth"),
+        "nat link missing: {stdout}"
     );
 }

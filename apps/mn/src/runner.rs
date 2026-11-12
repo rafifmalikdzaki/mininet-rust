@@ -181,9 +181,7 @@ fn check_unsupported(args: &MnArgs) -> Result<(), String> {
     if args.post.is_some() {
         return Err("--post CLI scripts are not ported yet (task 10c)".to_string());
     }
-    if args.nat_enabled() {
-        return Err("--nat (addNAT) is not ported yet".to_string());
-    }
+    // --nat is now wired (build_net adds nat0); nothing to reject here.
     if let Some(c) = &args.cluster {
         return Err(format!(
             "--cluster {c:?} (experimental cluster edition) is not ported"
@@ -290,6 +288,12 @@ pub fn build_net(args: &MnArgs) -> Result<Mininet, String> {
             .map_err(|e| e.to_string())?;
     }
     net.build().map_err(|e| e.to_string())?;
+    // bin/mn: if opts.nat: net.addNAT(**opts.nat) — after build, so the
+    // first switch exists to connect to.
+    if args.nat_enabled() {
+        net.add_nat("nat0", None, false, &Attrs::new())
+            .map_err(|e| format!("could not add NAT: {e}"))?;
+    }
     Ok(net)
 }
 

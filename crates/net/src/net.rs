@@ -295,6 +295,110 @@ impl Mininet {
         Ok(())
     }
 
+    /// Port of `Mininet.addNAT(name='nat0', connect=True, inNamespace=False,
+    /// **params)`: add the NAT as a host (`cls=NAT`, `subnet=ipBase`), link
+    /// it to the first switch (or `connect` switch name), and set every
+    /// namespaced host's default route to `via <natIP>` (stored as the
+    /// `defaultRoute` param so `config_hosts` applies it on start).
+    pub fn add_nat(
+        &mut self,
+        name: &str,
+        connect: Option<&str>,
+        in_namespace: bool,
+        extra: &Attrs,
+    ) -> Result<()> {
+        let mut attrs = extra.clone();
+        attrs.insert("name", mn_topo::Value::Str(name.to_string()));
+        attrs.insert("inNamespace", mn_topo::Value::Bool(in_namespace));
+        attrs.insert("cls", mn_topo::Value::Str("NAT".to_string()));
+        attrs.insert("subnet", mn_topo::Value::Str(self.ip_base.clone()));
+        self.add_host(name, &attrs)?;
+
+        let sw = connect
+            .map(str::to_string)
+            .or_else(|| self.switches.keys().next().map(str::to_string));
+        if let Some(sw) = sw {
+            self.add_link(name, &sw, None, None, &Attrs::default())?;
+        }
+
+        let nat_ip = self
+            .hosts
+            .get(name)
+            .and_then(|h| h.node().params.get("ip").cloned())
+            .map(|s| s.split('/').next().unwrap_or("").to_string())
+            .filter(|s| !s.is_empty());
+        if let Some(ip) = nat_ip {
+            let spec = format!("via {ip}");
+            let names: Vec<String> = self.hosts.keys().map(str::to_string).collect();
+            for hn in &names {
+                if hn == name {
+                    continue;
+                }
+                let h = self.hosts.get_mut(hn).expect("listed above");
+                if h.node().in_namespace {
+                    h.node_mut()
+                        .params
+                        .entry("defaultRoute".to_string())
+                        .or_insert(spec.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Run NAT configuration (iptables rules, ip_forward) for every host
+    /// whose `cls` param is `NAT`. Called from `start()` after
+    /// `config_hosts`. Dry-run safe: skipped for unstarted hosts.
+    pub fn config_nats(&mut self) -> Result<()> {
+        let names: Vec<String> = self
+            .hosts
+            .keys()
+            .filter(|n| {
+                self.hosts
+                    .get(n)
+                    .map(|h| {
+                        h.node()
+                            .params
+                            .get("cls")
+                            .map(|c| c == "NAT")
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+            })
+            .map(str::to_string)
+            .collect();
+        for name in &names {
+            let h = self.hosts.get_mut(name).expect("listed above");
+            if !h.started() {
+                continue; // dry-run: no shell, no iptables
+            }
+            let params = h.node().params.clone();
+            let subnet = params.get("subnet").cloned();
+            let local_intf = params.get("localIntf").cloned();
+            let flush = params
+                .get("flush")
+                .map(|f| f == "true" || f == "1")
+                .unwrap_or(false);
+            let mut nat = mn_node::nodelib::NAT::new(
+                name,
+                subnet.as_deref(),
+                local_intf.as_deref(),
+                flush,
+                h.node().in_namespace,
+                params,
+            );
+            // Adopt the started shell/host state: wrap the existing host.
+            *nat.host_mut() =
+                std::mem::replace(h, mn_node::Host::new(name, false, Default::default()));
+            nat.config()?;
+            *h = std::mem::replace(
+                nat.host_mut(),
+                mn_node::Host::new(name, false, Default::default()),
+            );
+        }
+        Ok(())
+    }
+
     /// Port of `Mininet.addLink(node1, node2, port1, port2, **params)`:
     /// resolve names, allocate ports (`node.newPort()` when not given),
     /// derive intf names (`node-eth<port>`) and random MACs, build the
@@ -595,6 +699,7 @@ impl Mininet {
         // Rust lifecycle applies the (already model-set) IP/MAC/lo here,
         // after the link ends have been moved into the host namespaces.
         self.config_hosts()?;
+        self.config_nats()?;
         if self.wait_connected != WaitConnected::Off {
             // Python's start() ignores waitConnected's return value; a
             // timeout warns inside wait_connected_switches, not errors.
