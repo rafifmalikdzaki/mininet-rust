@@ -18,18 +18,19 @@ reviewed, gate-green work, atomic per category, no AI attribution.
 - [x] design nits sweep (aafe084)
 
 ## In flight
+- [ ] polish-fixes worker: pickle->JSON state (security), ratbuf cell reset, graph JSON alignment, dep trim
 - [ ] T10d remaining cli.py commands + term.py xterms (agent repl-polish) - apps/mn only
 - [ ] T12 privileged CI + RUST.md/BENCHMARKS.md (agent ci-docs)
 
 ## Queued
-- [ ] T13 mn-tui graph TUI (agent tui-dev) - crates/tui + apps/mn-tui, ratatui, OMO-style live graph
-- [ ] T14 mn-mcp MCP server (agent mcp-dev) - crates/mcp + apps/mn-mcp, stdio JSON-RPC, graph+sim tools
+- [x] T13 mn-tui graph TUI (c6ee867)
+- [x] T14 mn-mcp MCP server (e8b42fd)
 - [x] T10b wire mn -> mn-net (5adb7e0): --topo/--dump/--test, non-root dry-run path
 - [x] T10c repl.rs interactive loop (ed56dbc): nodes/links/dump/net/ports/hosts/switches/controllers/ping/pingall/iperf/dpctl/route/xterm/exit (2-3 cmds per commit, golden tests)
 - [ ] T10d parity polish (agent repl-polish) (sh passthrough, intfs, py escape optional)
 - [x] nodelib: LinuxBridge/NAT/CPULimitedHost (2539eaa)
-- [ ] T11 full run on privileged host/CI (root-gated suites + diff_topology.sh)
-- [ ] T12 CI/docs (agent ci-docs): privileged workflow, RUST.md, BENCHMARKS.md PROGRESS/DECISIONS/BENCHMARKS, README, privileged CI job, PR to master
+- [ ] T11 full run on privileged host/CI (workflow rust-root-tests.yaml landed; needs a real CI run)
+- [x] T12 privileged CI + RUST.md + BENCHMARKS + D14-D17 (d742d88) PROGRESS/DECISIONS/BENCHMARKS, README, privileged CI job, PR to master
 - [ ] scope decision: miniedit/consoles/cluster/mobility out of v1 (DECISIONS.md)
 
 ## Checkpoint: current

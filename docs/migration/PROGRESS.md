@@ -40,7 +40,13 @@ all green — **207 passed / 0 failed / 14 ignored** (ignored = root-gated
 | ed56dbc | cli.py interactive loop port (Task 10c) |
 | 5908e6e | lxbr seam + netlink upstreaming + cleanups |
 
-Gates now: 345 passed / 0 failed / 24 ignored (root-gated).
+Gates now: 410 passed / 0 failed / 29 ignored (root-gated).
+
+## Latest commits (Tasks 10d/12/13/14)
+| c2be88b | cli.py parity: term.rs xterms, link/switch/wait/time/py/px/x (T10d) |
+| d742d88 | privileged CI workflow, RUST.md, BENCHMARKS, D14-D17 (T12) |
+| c6ee867 | mn-tui OMO-style graph TUI, headless --frames/--json (T13) |
+| e8b42fd | mn-mcp MCP server, 12 graph+sim tools, stdio JSON-RPC (T14) |
 
 ## In flight
 - Task 8b: Switch/Controller real ports (agents: switch-ctrl) — crates/node only.
