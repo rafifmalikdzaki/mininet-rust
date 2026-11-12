@@ -265,6 +265,16 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   docs/scripts -> reworded;
   ubuntu-24.04 removed the apt `pep8` package -> install.sh now installs
   `python3-pycodestyle` there. Result: rust-ci green on the PR.
+- **Fork-safety hardening (found via the privileged CI job):** a panic/Err in
+  a forked child used to unwind and drop the tokio runtime post-fork, which
+  can deadlock on the malloc lock — the parent then blocked forever in
+  waitpid and the whole root-test binary hung (reproduced in a local
+  privileged container; fixed by catch_unwind + ManuallyDrop + raw _exit in
+  all forked children, and by building runtimes pre-fork). Also fixed:
+  nested `run()` calls (addr_list -> link_index) that panicked with
+  "cannot start a runtime from within a runtime" (split into async inners);
+  qdisc delete now uses the root qdisc's real handle and qdisc dumps are
+  filtered per-interface in userspace.
 - **Verified:** actionlint clean on all 4 workflows; `cargo test --workspace`
   421 passed / 0 failed / 29 ignored with a CI-like PATH (no ovs-vsctl,
   no mnexec); pyflakes + pep8 clean on PYSRC locally.
