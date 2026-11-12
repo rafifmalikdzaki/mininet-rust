@@ -1138,10 +1138,11 @@ mod tests {
             "bridge deleted"
         );
 
-        // Deleting one veth end removes the pair, so the peer deletes are
-        // best-effort.
-        nl.link_delete(&port).unwrap();
-        nl.link_delete(&port2).unwrap();
+        // stop(delete_intfs=true) already removed the enslaved ports, and
+        // deleting one veth end removes the pair anyway — all deletes here
+        // are best-effort cleanup.
+        let _ = nl.link_delete(&port);
+        let _ = nl.link_delete(&port2);
         let _ = nl.link_delete(&peer);
         let _ = nl.link_delete(&peer2);
     }
