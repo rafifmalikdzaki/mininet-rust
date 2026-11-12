@@ -22,6 +22,8 @@ reviewed, gate-green work, atomic per category, no AI attribution.
 - [ ] T12 privileged CI + RUST.md/BENCHMARKS.md (agent ci-docs)
 
 ## Queued
+- [ ] T13 mn-tui graph TUI (agent tui-dev) - crates/tui + apps/mn-tui, ratatui, OMO-style live graph
+- [ ] T14 mn-mcp MCP server (agent mcp-dev) - crates/mcp + apps/mn-mcp, stdio JSON-RPC, graph+sim tools
 - [x] T10b wire mn -> mn-net (5adb7e0): --topo/--dump/--test, non-root dry-run path
 - [x] T10c repl.rs interactive loop (ed56dbc): nodes/links/dump/net/ports/hosts/switches/controllers/ping/pingall/iperf/dpctl/route/xterm/exit (2-3 cmds per commit, golden tests)
 - [ ] T10d parity polish (agent repl-polish) (sh passthrough, intfs, py escape optional)

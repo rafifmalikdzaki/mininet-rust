@@ -104,6 +104,17 @@ declarative topo format.
   (single, linear, tree) in Python mininet and Rust mn on a root host and
   compares `dump`/`pingall`/`links` output. *(verification, M — runs in CI/root only; scripts landed in `a5bbd12`, execution pending a privileged host)*
 
+### Phase 3b — TUI & AI/MCP integration (OMO-style live graph + native AI tooling)
+- [ ] Task 13: `crates/tui` + `apps/mn-tui` — ratatui TUI rendering the network as a
+  live graph (OMO-style: nodes as boxes with name/IP/role, edges with status color),
+  layered layout, pan/zoom/select + detail pane, keybindings; non-root dry-run mode
+  (`mn-tui --topo single,3` renders the plan), live mode needs root.
+- [ ] Task 14: `crates/mcp` + `apps/mn-mcp` — MCP server (JSON-RPC 2.0 over stdio:
+  initialize / tools/list / tools/call) exposing graph + simulation tools to any
+  MCP-capable AI agent: topo_list, topo_plan(spec) -> graph JSON {nodes, edges},
+  graph (live status), net_start/net_stop (root-gated), pingall, dump, links,
+  host_cmd. Registerable via `vibe mcp add mn-mcp --transport stdio --command ...`.
+
 ### Phase 4 — Hardening & docs
 - [ ] Task 12: CI gates for Rust (fmt/clippy/test/nextest, release build),
   `docs/migration/PROGRESS.md` ledger, `README` section with build/run
