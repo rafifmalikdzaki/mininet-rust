@@ -177,6 +177,14 @@ impl Tc {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
+        Self::from_runtime(rt)
+    }
+
+    /// Build a `Tc` on an existing current-thread runtime. Fork children must
+    /// use this with a runtime created **before** fork(2) — creating a
+    /// runtime after fork can deadlock on the malloc lock (same rule as
+    /// [`mn_netlink::Netlink::from_runtime`]).
+    pub fn from_runtime(rt: tokio::runtime::Runtime) -> Result<Self> {
         let handle = rt.block_on(async {
             let (connection, handle, _messages) =
                 rtnetlink::new_connection().map_err(|e| Error::Tc(e.to_string()))?;

@@ -671,17 +671,29 @@ mod tests {
         assert!(ops.nl.link_index("h2-eth0").unwrap().is_none());
 
         // Verify inside that netns with a short-lived verifier child.
-        // SAFETY: child setns's into `ns`, does read-only netlink dumps, then
-        // raw _exit with the result code.
+        // SAFETY: BOTH tokio runtimes are built BEFORE the fork — creating a
+        // runtime after fork(2) can deadlock on the malloc lock (the exact
+        // hazard Netlink::from_runtime's docs warn about; observed as a hang
+        // on the first privileged CI run). The child setns's into `ns`, does
+        // read-only netlink dumps on the pre-fork runtimes, then raw _exit.
+        let rt_nl = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let rt_tc = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let verifier = unsafe { nix::unistd::fork().unwrap() };
         match verifier {
             nix::unistd::ForkResult::Child => {
                 let rc = (|| -> Result<()> {
                     setns_name(&ns)?;
-                    let ops = LinkOps::new()?;
-                    let l2 = ops.nl.link_get("h2-eth0")?.expect("h2-eth0 in node ns");
+                    let nl = mn_netlink::Netlink::from_runtime(rt_nl)?;
+                    let tc = Tc::from_runtime(rt_tc)?;
+                    let l2 = nl.link_get("h2-eth0")?.expect("h2-eth0 in node ns");
                     assert!(l2.is_up);
-                    let addrs = ops.nl.addr_list(Some("h2-eth0"))?;
+                    let addrs = nl.addr_list(Some("h2-eth0"))?;
                     assert!(
                         addrs
                             .iter()
@@ -689,7 +701,7 @@ mod tests {
                                 && a.prefix_len == 24),
                         "addr missing in {addrs:?}"
                     );
-                    let qdiscs = ops.tc.qdisc_list(&ops.nl, "h2-eth0")?;
+                    let qdiscs = tc.qdisc_list(&nl, "h2-eth0")?;
                     assert!(
                         qdiscs.iter().any(|q| q.kind == "netem"),
                         "netem qdisc missing in {qdiscs:?}"
