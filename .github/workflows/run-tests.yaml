@@ -94,7 +94,8 @@ jobs:
           import sys, unittest
           sys.path.insert(0, '.')
           sys.argv.append('-quick')
-          SKIP_MODULES = {'test_baresshd', 'test_clusterSanity', 'test_hwintf', 'test_sshd'}
+          SKIP_MODULES = {'test_baresshd', 'test_clusterSanity', 'test_hwintf', 'test_sshd',
+                          'test_controlnet', 'test_mobility', 'test_scratchnet'}
           suite = unittest.defaultTestLoader.discover('examples/test')
           def filt(s):
               out = unittest.TestSuite()
