@@ -5,7 +5,7 @@
 use std::process::Command;
 
 fn mn_tui(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_mn-tui"))
+    Command::new(env!("CARGO_BIN_EXE_mnr-tui"))
         .args(args)
         .output()
         .expect("run mn-tui")
