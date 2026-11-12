@@ -1,0 +1,662 @@
+//! Link model — the Rust port of `Link` / `TCLink` / `TCULink` in
+//! `mininet/link.py`.
+//!
+//! A basic link is a veth pair. Python's `Link.__init__` calls
+//! `makeIntfPair` (`mininet/util.py`: `ip link add ... type veth peer ...
+//! netns <pid>`) and then each `Intf` configures itself inside its node
+//! (`moveIntf`: `ip link set <intf> netns <pid>`). Here [`Link::attach`]
+//! does the equivalent entirely over netlink via [`mn_netlink`]:
+//!
+//! 1. `veth_create_replacing` (makeIntfPair, incl. optional MACs),
+//! 2. `link_set_up` on both ends,
+//! 3. `addr_add` for any configured IP/prefix,
+//! 4. netem qdisc via [`crate::Tc`] for TC links (delay/jitter/loss/limit/bw),
+//! 5. `move_to_netns_pid` of each end into its node's namespace (moveIntf).
+//!
+//! Steps 2–4 deliberately run *before* the move: an interface's
+//! up/address/qdisc configuration travels with the veth end into the target
+//! namespace, so no in-namespace `setns` round-trip is needed from the
+//! orchestrator. [`Link::delete`] deletes the pair (deleting either end of
+//! a veth pair removes both), like Python's `Link.delete`.
+
+use std::fmt;
+
+use mn_netlink::Netlink;
+
+use crate::intf::{intf_name, Intf, IntfStatus};
+use crate::params::{parse_link_spec, LinkKind, LinkParams};
+use crate::tc::{NetemConfig, Tc};
+use crate::{Error, Result};
+
+/// Aggregate link status derived from the two endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkStatus {
+    /// Both ends up.
+    Up,
+    /// Both ends down.
+    Down,
+    /// One end up/down and the other missing (or mixed).
+    Partial,
+    /// Neither end exists.
+    Missing,
+}
+
+/// Kernel-operation handles used by [`Link::attach`]: the `mn-netlink`
+/// facade for veth/address/move ops and the `mn-link` TrafficControl facade
+/// for the netem qdisc.
+#[derive(Debug)]
+pub struct LinkOps {
+    /// veth create/delete, link up/down, addr add, move-to-netns.
+    pub nl: Netlink,
+    /// qdisc add/del/list (netem).
+    pub tc: Tc,
+}
+
+impl LinkOps {
+    /// Open both netlink facades. Opening sockets needs no privileges.
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            nl: Netlink::new()?,
+            tc: Tc::new()?,
+        })
+    }
+}
+
+/// Mbps to bytes/sec for netem's `TCA_NETEM_RATE64` (tc parses `10Mbit` as
+/// 10 * 10^6 bit/s = 1_250_000 B/s).
+fn mbps_to_bytes_per_sec(mbps: f64) -> u64 {
+    (mbps * 1_000_000.0 / 8.0) as u64
+}
+
+/// A basic link: a veth pair between two nodes. Port of
+/// `mininet/link.py::Link`.
+#[derive(Debug, Clone)]
+pub struct Link {
+    /// First node name.
+    pub node1: String,
+    /// Second node name.
+    pub node2: String,
+    /// Interface on node1.
+    pub intf1: Intf,
+    /// Interface on node2.
+    pub intf2: Intf,
+    /// Link class (default / tc / tcu / ovs).
+    pub kind: LinkKind,
+    /// TC params applied to both ends (TCLink/TCULink).
+    pub params: LinkParams,
+    attached: bool,
+}
+
+impl Link {
+    /// Create a link model between `node1` and `node2` with default
+    /// interface names `node-eth<port>`. Port allocation (`Node.newPort`)
+    /// belongs to the node crate; here ports default to 0 when not given.
+    pub fn new(
+        node1: &str,
+        node2: &str,
+        port1: Option<u32>,
+        port2: Option<u32>,
+        kind: LinkKind,
+        params: LinkParams,
+    ) -> Result<Self> {
+        let p1 = port1.unwrap_or(0);
+        let p2 = port2.unwrap_or(0);
+        Self::with_intf_names(
+            node1,
+            intf_name(node1, p1),
+            port1,
+            node2,
+            intf_name(node2, p2),
+            port2,
+            kind,
+            params,
+        )
+    }
+
+    /// Create a link model with explicit interface names (Python
+    /// `intfName1`/`intfName2`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_intf_names(
+        node1: &str,
+        intf1: impl Into<String>,
+        port1: Option<u32>,
+        node2: &str,
+        intf2: impl Into<String>,
+        port2: Option<u32>,
+        kind: LinkKind,
+        params: LinkParams,
+    ) -> Result<Self> {
+        let i1 = intf1.into();
+        let i2 = intf2.into();
+        mn_netlink::validate_ifname(&i1).map_err(Error::Netlink)?;
+        mn_netlink::validate_ifname(&i2).map_err(Error::Netlink)?;
+        if i1 == i2 {
+            return Err(Error::InvalidInput(format!(
+                "link ends must have different interface names ({i1:?})"
+            )));
+        }
+        Ok(Self {
+            node1: node1.to_string(),
+            intf1: Intf::new(i1, node1, port1),
+            node2: node2.to_string(),
+            intf2: Intf::new(i2, node2, port2),
+            kind,
+            params,
+            attached: false,
+        })
+    }
+
+    /// Build a link from a spec string, e.g.
+    /// `Link::from_spec("h1", "h2", Some(0), Some(0), "tc,bw=10,delay=5ms")`.
+    pub fn from_spec(
+        node1: &str,
+        node2: &str,
+        port1: Option<u32>,
+        port2: Option<u32>,
+        spec: &str,
+    ) -> Result<Self> {
+        let parsed = parse_link_spec(spec)?;
+        Self::new(node1, node2, port1, port2, parsed.kind, parsed.params)
+    }
+
+    /// Port number of end 1 / end 2 (Python reads them off the intfs).
+    pub fn port1(&self) -> Option<u32> {
+        self.intf1.port
+    }
+
+    /// Port number of end 2.
+    pub fn port2(&self) -> Option<u32> {
+        self.intf2.port
+    }
+
+    /// Whether [`Link::attach`] has run and [`Link::delete`] has not.
+    pub fn is_attached(&self) -> bool {
+        self.attached
+    }
+
+    /// Attach the link in the kernel: create the veth pair, bring both ends
+    /// up, assign addresses, install the netem qdisc for TC links, then
+    /// move each end into its node's network namespace.
+    ///
+    /// `node1_pid` / `node2_pid` are the pids whose netns each end belongs
+    /// to (Python `node.pid`); `None` leaves the end in the current
+    /// namespace (root-namespace nodes).
+    ///
+    /// TODO(port): when `params.bw` is set and `params.use_htb` is true,
+    /// Python installs an HTB root qdisc (`handle 5:0 htb default 1`) with
+    /// class `5:1` (`rate <bw>Mbit burst 15k`) and hangs netem under it.
+    /// That path needs raw `tc_htb_opt`/rtab blobs (RTM_NEWTCLASS), which
+    /// netlink-packet-route 0.34 does not model; this slice applies `bw`
+    /// via netem's `TCA_NETEM_RATE64` instead (see crate docs).
+    pub fn attach(
+        &mut self,
+        ops: &LinkOps,
+        node1_pid: Option<u32>,
+        node2_pid: Option<u32>,
+    ) -> Result<()> {
+        let name1 = self.intf1.name.clone();
+        let name2 = self.intf2.name.clone();
+
+        // makeIntfPair: delete stale ends, then create the pair (with MACs).
+        ops.nl
+            .veth_create_replacing(&name1, &name2, self.intf1.mac, self.intf2.mac)?;
+
+        // Configure while both ends are still local; the config travels
+        // with the veth end when it is moved below.
+        ops.nl.link_set_up(&name1, true)?;
+        ops.nl.link_set_up(&name2, true)?;
+        for intf in [&self.intf1, &self.intf2] {
+            if let (Some(ip), Some(prefix_len)) = (intf.ip, intf.prefix_len) {
+                ops.nl.addr_add(&intf.name, ip, prefix_len)?;
+            }
+        }
+
+        if self.kind.uses_tc() && self.params.has_tc() {
+            for intf in [&self.intf1, &self.intf2] {
+                // Python clears a pre-existing root qdisc unless it is a
+                // priomap/noqueue qdisc.
+                let root_kind = ops
+                    .tc
+                    .qdisc_list(&intf.name)?
+                    .into_iter()
+                    .find(|q| q.parent == crate::tc::TC_H_ROOT)
+                    .map(|q| q.kind);
+                if !matches!(root_kind.as_deref(), Some("noqueue") | Some("prio")) {
+                    ops.tc.del_root_qdisc(&intf.name)?;
+                }
+                let bw = self.params.effective_bw_mbps(&intf.node);
+                ops.tc.add_netem(
+                    &intf.name,
+                    &NetemConfig {
+                        delay: self.params.delay,
+                        jitter: self.params.jitter,
+                        loss_percent: self.params.loss,
+                        limit: self.params.max_queue_size,
+                        rate_bytes_per_sec: bw.map(mbps_to_bytes_per_sec),
+                    },
+                )?;
+            }
+        }
+
+        // moveIntf: move each end into its node's netns.
+        if let Some(pid) = node2_pid {
+            ops.nl.move_to_netns_pid(&name2, pid)?;
+        }
+        if let Some(pid) = node1_pid {
+            if pid != std::process::id() {
+                ops.nl.move_to_netns_pid(&name1, pid)?;
+            }
+        }
+
+        self.intf1.status = IntfStatus::Up;
+        self.intf2.status = IntfStatus::Up;
+        self.attached = true;
+        Ok(())
+    }
+
+    /// Delete the link (Python `Link.delete`: `intf1.delete()` +
+    /// `intf2.delete()`). Deleting either end of a veth pair removes both,
+    /// so an end that was moved into another namespace needs no special
+    /// handling; if neither end is present locally the link is already gone.
+    pub fn delete(&mut self, nl: &Netlink) -> Result<()> {
+        for name in [self.intf1.name.clone(), self.intf2.name.clone()] {
+            if nl.link_index(&name)?.is_some() {
+                nl.link_delete(&name)?;
+                break;
+            }
+        }
+        self.attached = false;
+        self.intf1.status = IntfStatus::Missing;
+        self.intf2.status = IntfStatus::Missing;
+        Ok(())
+    }
+
+    /// Python `Link.stop()` — just deletes the link.
+    pub fn stop(&mut self, nl: &Netlink) -> Result<()> {
+        self.delete(nl)
+    }
+
+    /// Re-query kernel state of both ends and return the aggregate status.
+    pub fn refresh_status(&mut self, nl: &Netlink) -> Result<LinkStatus> {
+        for intf in [&mut self.intf1, &mut self.intf2] {
+            intf.status = match nl.link_get(&intf.name)? {
+                None => IntfStatus::Missing,
+                Some(info) if info.is_up => IntfStatus::Up,
+                Some(_) => IntfStatus::Down,
+            };
+        }
+        Ok(self.status())
+    }
+
+    /// Aggregate status from the cached per-end statuses.
+    pub fn status(&self) -> LinkStatus {
+        match (self.intf1.status, self.intf2.status) {
+            (IntfStatus::Up, IntfStatus::Up) => LinkStatus::Up,
+            (IntfStatus::Down, IntfStatus::Down) => LinkStatus::Down,
+            (IntfStatus::Missing, IntfStatus::Missing) => LinkStatus::Missing,
+            _ => LinkStatus::Partial,
+        }
+    }
+
+    /// Python `Link.status()`: `"(%s %s)" % (intf1.status(), intf2.status())`.
+    pub fn status_string(&self) -> String {
+        format!("({} {})", self.intf1.status, self.intf2.status)
+    }
+}
+
+impl fmt::Display for Link {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Python `Link.__str__`: '%s<->%s' % (intf1, intf2)
+        write!(f, "{}<->{}", self.intf1, self.intf2)
+    }
+}
+
+/// `TCLink` — link with TC (netem) interfaces, port of
+/// `mininet/link.py::TCLink` (sets `cls1`/`cls2` to `TCIntf`, i.e. applies
+/// the link params to both ends).
+#[derive(Debug, Clone)]
+pub struct TCLink {
+    link: Link,
+}
+
+impl TCLink {
+    /// New TC link with explicit params.
+    pub fn new(
+        node1: &str,
+        node2: &str,
+        port1: Option<u32>,
+        port2: Option<u32>,
+        params: LinkParams,
+    ) -> Result<Self> {
+        Ok(Self {
+            link: Link::new(node1, node2, port1, port2, LinkKind::Tc, params)?,
+        })
+    }
+
+    /// New TC link from a spec string, e.g. `"tc,bw=10,delay=5ms,loss=0.1"`.
+    pub fn from_spec(
+        node1: &str,
+        node2: &str,
+        port1: Option<u32>,
+        port2: Option<u32>,
+        spec: &str,
+    ) -> Result<Self> {
+        Ok(Self {
+            link: Link::from_spec(node1, node2, port1, port2, spec)?,
+        })
+    }
+
+    /// Access the inner link.
+    pub fn link(&self) -> &Link {
+        &self.link
+    }
+
+    /// Mutable access to the inner link.
+    pub fn link_mut(&mut self) -> &mut Link {
+        &mut self.link
+    }
+}
+
+impl std::ops::Deref for TCLink {
+    type Target = Link;
+    fn deref(&self) -> &Link {
+        &self.link
+    }
+}
+
+impl std::ops::DerefMut for TCLink {
+    fn deref_mut(&mut self) -> &mut Link {
+        &mut self.link
+    }
+}
+
+/// `TCULink` — TCLink tuned for UserSwitch (`txo=rxo=False` in Python;
+/// the ethtool offload flags are not applied in this slice, TODO).
+#[derive(Debug, Clone)]
+pub struct TCULink {
+    link: Link,
+}
+
+impl TCULink {
+    /// New TCU link with explicit params.
+    pub fn new(
+        node1: &str,
+        node2: &str,
+        port1: Option<u32>,
+        port2: Option<u32>,
+        params: LinkParams,
+    ) -> Result<Self> {
+        Ok(Self {
+            link: Link::new(node1, node2, port1, port2, LinkKind::TcU, params)?,
+        })
+    }
+
+    /// New TCU link from a spec string (e.g. `"tcu,bw=10"`).
+    pub fn from_spec(
+        node1: &str,
+        node2: &str,
+        port1: Option<u32>,
+        port2: Option<u32>,
+        spec: &str,
+    ) -> Result<Self> {
+        Ok(Self {
+            link: Link::from_spec(node1, node2, port1, port2, spec)?,
+        })
+    }
+}
+
+impl std::ops::Deref for TCULink {
+    type Target = Link;
+    fn deref(&self) -> &Link {
+        &self.link
+    }
+}
+
+impl std::ops::DerefMut for TCULink {
+    fn deref_mut(&mut self) -> &mut Link {
+        &mut self.link
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::intf::set_ip;
+    use crate::root_tests_enabled;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn link_construction_defaults() {
+        let link = Link::new(
+            "h1",
+            "h2",
+            Some(0),
+            Some(1),
+            LinkKind::Default,
+            LinkParams::default(),
+        )
+        .unwrap();
+        assert_eq!(link.intf1.name, "h1-eth0");
+        assert_eq!(link.intf2.name, "h2-eth1");
+        assert_eq!(link.port1(), Some(0));
+        assert_eq!(link.port2(), Some(1));
+        assert_eq!(link.to_string(), "h1-eth0<->h2-eth1");
+        assert!(!link.is_attached());
+        assert_eq!(link.status(), LinkStatus::Missing);
+        assert_eq!(link.status_string(), "(MISSING MISSING)");
+    }
+
+    #[test]
+    fn link_from_spec() {
+        let link = Link::from_spec("h1", "s1", Some(0), Some(2), "tc,bw=10,delay=5ms").unwrap();
+        assert_eq!(link.kind, LinkKind::Tc);
+        assert_eq!(link.params.bw, Some(10.0));
+        assert_eq!(link.intf2.name, "s1-eth2");
+        let err = Link::from_spec("h1", "h2", None, None, "bogus,bw=1").unwrap_err();
+        assert!(matches!(err, Error::Parse(_)));
+    }
+
+    #[test]
+    fn link_rejects_bad_names() {
+        assert!(Link::with_intf_names(
+            "h1",
+            "a/b",
+            None,
+            "h2",
+            "h2-eth0",
+            None,
+            LinkKind::Default,
+            LinkParams::default()
+        )
+        .is_err());
+        assert!(Link::with_intf_names(
+            "h1",
+            "same0",
+            None,
+            "h2",
+            "same0",
+            None,
+            LinkKind::Default,
+            LinkParams::default()
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn tclink_and_tculink_wrappers() {
+        let mut tc = TCLink::from_spec("h1", "h2", Some(0), Some(0), "tc,loss=1").unwrap();
+        assert_eq!(tc.kind, LinkKind::Tc);
+        assert_eq!(tc.params.loss, Some(1.0));
+        tc.params.bw = Some(5.0);
+        assert_eq!(tc.link().params.bw, Some(5.0));
+        let tcu = TCULink::from_spec("h1", "h2", None, None, "tcu,bw=5").unwrap();
+        assert_eq!(tcu.kind, LinkKind::TcU);
+        assert!(tcu.kind.uses_tc());
+        assert!(!LinkKind::Default.uses_tc());
+        assert!(!LinkKind::Ovs.uses_tc());
+    }
+
+    #[test]
+    fn status_aggregation() {
+        let mut link = Link::new(
+            "h1",
+            "h2",
+            None,
+            None,
+            LinkKind::Default,
+            LinkParams::default(),
+        )
+        .unwrap();
+        link.intf1.status = IntfStatus::Up;
+        link.intf2.status = IntfStatus::Up;
+        assert_eq!(link.status(), LinkStatus::Up);
+        assert_eq!(link.status_string(), "(UP UP)");
+        link.intf2.status = IntfStatus::Down;
+        assert_eq!(link.status(), LinkStatus::Partial);
+        link.intf1.status = IntfStatus::Missing;
+        link.intf2.status = IntfStatus::Missing;
+        assert_eq!(link.status(), LinkStatus::Missing);
+        link.intf1.status = IntfStatus::Down;
+        link.intf2.status = IntfStatus::Down;
+        assert_eq!(link.status(), LinkStatus::Down);
+    }
+
+    #[test]
+    fn mbps_conversion_matches_tc_mbit() {
+        assert_eq!(mbps_to_bytes_per_sec(10.0), 1_250_000);
+        assert_eq!(mbps_to_bytes_per_sec(1000.0), 125_000_000);
+    }
+
+    #[test]
+    fn set_ip_helper() {
+        let mut intf = Intf::new("h1-eth0", "h1", Some(0));
+        set_ip(&mut intf, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 24);
+        assert_eq!(intf.ip, Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
+        assert_eq!(intf.prefix_len, Some(24));
+    }
+
+    // ------------------------------------------------------------------
+    // Root-gated integration test: full TC link lifecycle across a netns.
+    // Must run on a privileged Linux host/CI runner:
+    //   MN_RUST_ROOT_TESTS=1 cargo test -p mn-link -- --ignored --test-threads=1
+    // ------------------------------------------------------------------
+
+    #[test]
+    #[ignore = "requires root + netns support on a privileged Linux host/CI; run with MN_RUST_ROOT_TESTS=1 cargo test -p mn-link -- --ignored --test-threads=1"]
+    fn tc_link_lifecycle_across_netns() {
+        if !root_tests_enabled() {
+            return;
+        }
+        use mn_netlink::{netns_add, netns_del, setns_name};
+
+        let ns = format!("mnlk{}", std::process::id());
+        let _ = netns_del(&ns);
+        netns_add(&ns).unwrap();
+
+        // A child process living in the new netns plays the role of "node2"
+        // (a mininet host process). SAFETY: child calls setns_name, then a
+        // sleep loop, then raw _exit only.
+        let holder = unsafe { nix::unistd::fork().unwrap() };
+        let holder_pid = match holder {
+            nix::unistd::ForkResult::Child => {
+                if setns_name(&ns).is_err() {
+                    // SAFETY: raw syscall.
+                    unsafe { libc::_exit(1) };
+                }
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(60));
+                }
+            }
+            nix::unistd::ForkResult::Parent { child } => child,
+        };
+
+        let ops = LinkOps::new().unwrap();
+        let mut link = TCLink::from_spec(
+            "h1",
+            "h2",
+            Some(0),
+            Some(0),
+            "tc,bw=10,delay=5ms,jitter=100us,loss=0.1,max_queue_size=200",
+        )
+        .unwrap();
+        set_ip(&mut link.intf1, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 24);
+        set_ip(&mut link.intf2, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 24);
+
+        // Attach: intf2 is moved into the holder's netns (node2 pid).
+        link.attach(&ops, None, Some(holder_pid.as_raw() as u32))
+            .expect("attach as root");
+        assert!(link.is_attached());
+        assert_eq!(link.status(), LinkStatus::Up);
+
+        // End 1 is in the root ns: up, address assigned, netem qdisc present.
+        let l1 = ops.nl.link_get("h1-eth0").unwrap().expect("h1-eth0 exists");
+        assert!(l1.is_up);
+        assert_eq!(l1.kind.as_deref(), Some("veth"));
+        let addrs = ops.nl.addr_list(Some("h1-eth0")).unwrap();
+        assert!(
+            addrs
+                .iter()
+                .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)) && a.prefix_len == 24),
+            "addr missing in {addrs:?}"
+        );
+        let qdiscs = ops.tc.qdisc_list("h1-eth0").unwrap();
+        assert!(
+            qdiscs
+                .iter()
+                .any(|q| q.kind == "netem" && q.handle == crate::NETEM_HANDLE),
+            "netem qdisc missing in {qdiscs:?}"
+        );
+
+        // End 2 moved into the holder's netns.
+        assert!(ops.nl.link_index("h2-eth0").unwrap().is_none());
+
+        // Verify inside that netns with a short-lived verifier child.
+        // SAFETY: child setns's into `ns`, does read-only netlink dumps, then
+        // raw _exit with the result code.
+        let verifier = unsafe { nix::unistd::fork().unwrap() };
+        match verifier {
+            nix::unistd::ForkResult::Child => {
+                let rc = (|| -> Result<()> {
+                    setns_name(&ns)?;
+                    let ops = LinkOps::new()?;
+                    let l2 = ops.nl.link_get("h2-eth0")?.expect("h2-eth0 in node ns");
+                    assert!(l2.is_up);
+                    let addrs = ops.nl.addr_list(Some("h2-eth0"))?;
+                    assert!(
+                        addrs
+                            .iter()
+                            .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))
+                                && a.prefix_len == 24),
+                        "addr missing in {addrs:?}"
+                    );
+                    let qdiscs = ops.tc.qdisc_list("h2-eth0")?;
+                    assert!(
+                        qdiscs.iter().any(|q| q.kind == "netem"),
+                        "netem qdisc missing in {qdiscs:?}"
+                    );
+                    Ok(())
+                })();
+                // SAFETY: raw syscall only.
+                unsafe { libc::_exit(if rc.is_ok() { 0 } else { 1 }) };
+            }
+            nix::unistd::ForkResult::Parent { child } => {
+                use nix::sys::wait::{waitpid, WaitStatus};
+                match waitpid(child, None).unwrap() {
+                    WaitStatus::Exited(_, 0) => {}
+                    other => panic!("verifier child failed: {other:?}"),
+                }
+            }
+        }
+
+        // Delete from the root ns: deleting end 1 removes the whole pair.
+        link.delete(&ops.nl).unwrap();
+        assert!(!link.is_attached());
+        assert_eq!(link.status(), LinkStatus::Missing);
+        assert!(ops.nl.link_index("h1-eth0").unwrap().is_none());
+
+        // SAFETY: kill the holder child, reap it, remove the netns.
+        unsafe { libc::kill(holder_pid.as_raw(), libc::SIGKILL) };
+        nix::sys::wait::waitpid(holder_pid, None).ok();
+        netns_del(&ns).unwrap();
+    }
+}

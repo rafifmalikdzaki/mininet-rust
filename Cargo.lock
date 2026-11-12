@@ -261,6 +261,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mn-link"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "libc",
+ "mn-netlink",
+ "mn-util",
+ "netlink-packet-core",
+ "netlink-packet-route",
+ "nix",
+ "rtnetlink",
+ "tokio",
+]
+
+[[package]]
 name = "mn-netlink"
 version = "0.1.0"
 dependencies = [
