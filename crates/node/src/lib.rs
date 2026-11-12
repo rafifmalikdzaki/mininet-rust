@@ -18,8 +18,16 @@
 //! - [`Host`]: a `Node` with Mininet's automatic IP/MAC assignment hooks
 //!   (`mn_util::ip_add_with` / `mac_colon_hex`, as `Mininet.addHost` does in
 //!   `mininet/net.py`).
-//! - [`Switch`], [`Controller`], [`CPULimitedHost`]: stubs with TODOs
-//!   (OVS/OpenFlow control plane and cgroup CPU limiting are later slices).
+//! - [`Switch`] + subclasses [`OVSSwitch`], [`OVSBridge`], [`UserSwitch`],
+//!   [`IVSSwitch`] (task 8b): the OVS control plane stays behind `ovs-vsctl`
+//!   subprocess calls (per the migration plan — retained, not ported to
+//!   netlink); all `ovs-vsctl` argv vectors are pure, unit-tested builders in
+//!   [`switch`]. `UserSwitch`/`IVSSwitch` subprocess launches are root-gated.
+//! - [`Controller`] + subclasses [`OVSController`], [`RemoteController`],
+//!   [`NOX`], [`Ryu`] (task 8b): `isListening` is a std `TcpStream` probe
+//!   with timeout (works unprivileged on localhost); `NOX`/`Ryu` are stubs
+//!   with TODO `start()`. [`CPULimitedHost`] remains a stub (cgroup CPU
+//!   limiting is a later slice).
 //!
 //! # Namespace lifecycle
 //!
@@ -101,15 +109,28 @@ mod node;
 pub mod controller;
 pub mod switch;
 
-pub use controller::Controller;
+pub use controller::{
+    cargs_with_port, default_controller, is_listening, is_listening_timeout, Controller,
+    OVSController, RemoteController, Ryu, DEFAULT_CARGS, DEFAULT_COMMAND, DEFAULT_IP, DEFAULT_PORT,
+    DEFAULT_PROTOCOL, LISTEN_PROBE_TIMEOUT, NOX,
+};
 pub use error::{Error, Result};
 pub use host::{CPULimitedHost, Host};
 pub use mnexec::{
     attach_argv, mnexec_available, mnexec_available_in, mnexec_path, mnexec_path_from,
-    send_cmd_line, shell_argv, PROMPT_SENTINEL,
+    send_cmd_line, shell_argv, which, which_in, PROMPT_SENTINEL,
 };
 pub use node::{run_in_netns, CmdOutput, Node};
-pub use switch::Switch;
+pub use switch::{
+    bridge_opts, controller_target, default_dpid, default_dpid_len, dpctl_listen_addr,
+    intf_opts_args, is_old_ovs_version, ivs_logfile, ivs_start_argv, ofctl_dpctl_argv,
+    ofdatapath_cmd, ofprotocol_cmd, ovs_version_from, parse_controller_uuids, ptcp_target,
+    user_switch_listen_opt, vsctl_add_br, vsctl_add_port, vsctl_batch_del_br, vsctl_del_br,
+    vsctl_del_controller, vsctl_del_port, vsctl_get_bridge_controller,
+    vsctl_get_controller_is_connected, vsctl_set_bridge, vsctl_set_controller,
+    vsctl_set_datapath_id, vsctl_set_fail_mode, IVSSwitch, OVSBridge, OVSSwitch, Switch,
+    UserSwitch, DPID_LEN, OVS_OFCTL, OVS_VSCTL, USER_DPID_LEN,
+};
 
 /// Whether root/namespace integration tests should actually run.
 ///

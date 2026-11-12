@@ -75,6 +75,30 @@ pub fn mnexec_available_in(path: &Path, path_env: Option<&OsStr>) -> bool {
     std::env::split_paths(path_env).any(|dir| is_executable_file(&dir.join(name)))
 }
 
+/// Port of `mininet/util.py::which` (itself a `which(1)` call): resolve
+/// `program` against `$PATH` and return the first executable match, or
+/// `None`. Here a pure `PATH` scan instead of shelling out to `which`.
+pub fn which(program: &str) -> Option<PathBuf> {
+    which_in(program, std::env::var_os("PATH").as_deref())
+}
+
+/// Pure core of [`which`], split out for unit testing: `path_env` is the
+/// value of `$PATH` to search (pass `None` to simulate an empty `PATH`).
+pub fn which_in(program: &str, path_env: Option<&OsStr>) -> Option<PathBuf> {
+    if program.contains(std::path::MAIN_SEPARATOR) {
+        // Explicit path: must be an executable file.
+        let p = PathBuf::from(program);
+        return if is_executable_file(&p) {
+            Some(p)
+        } else {
+            None
+        };
+    }
+    std::env::split_paths(path_env?)
+        .map(|dir| dir.join(program))
+        .find(|p| is_executable_file(p))
+}
+
 /// Is `path` a regular file with at least one executable bit set?
 #[cfg(unix)]
 fn is_executable_file(path: &Path) -> bool {
@@ -289,5 +313,33 @@ mod tests {
             send_cmd_line("iperf -s &", true),
             "iperf -s & printf \"\\001%d\\012\" $! "
         );
+    }
+
+    #[test]
+    fn which_resolves_against_path_like_which1() {
+        let dir = std::env::temp_dir().join(format!("mn-node-which-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = make_executable(&dir, "fake-prog");
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let path_env = std::env::join_paths([&dir, &empty]).unwrap();
+        // Found on PATH:
+        assert_eq!(which_in("fake-prog", Some(&path_env)), Some(bin.clone()));
+        // Not on PATH / no PATH:
+        let empty_env = std::env::join_paths([&empty]).unwrap();
+        assert_eq!(which_in("fake-prog", Some(&empty_env)), None);
+        assert_eq!(which_in("fake-prog", None), None);
+        // Explicit executable path:
+        assert_eq!(which_in(bin.to_str().unwrap(), None), Some(bin.clone()));
+        // Explicit path that is not executable:
+        let plain = dir.join("plain.txt");
+        std::fs::write(&plain, b"x").unwrap();
+        assert_eq!(which_in(plain.to_str().unwrap(), Some(&path_env)), None);
+        // Real system binary resolvable through the actual PATH:
+        if std::env::var_os("PATH").is_some() {
+            assert!(which("sh").is_some());
+            assert!(which("definitely-not-a-real-binary-xyz").is_none());
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

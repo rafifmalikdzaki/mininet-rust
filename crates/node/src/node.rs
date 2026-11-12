@@ -43,6 +43,21 @@ pub struct CmdOutput {
     pub exit_code: i32,
 }
 
+impl CmdOutput {
+    /// stdout and stderr merged into one string — Python runs node commands
+    /// on a pty, which merges the two streams, so `Node.cmd`'s return value
+    /// contains both; this reproduces that for `pexec` results.
+    pub fn merged(&self) -> String {
+        if self.stderr.is_empty() {
+            self.stdout.clone()
+        } else if self.stdout.is_empty() {
+            self.stderr.clone()
+        } else {
+            format!("{}{}", self.stdout, self.stderr)
+        }
+    }
+}
+
 /// Run `f` with a fresh [`Netlink`] handle *inside the network namespace of
 /// process `pid`* — the netlink-in-namespace equivalent of running a
 /// command via `mnexec -a <pid>` / `setns(2)`.
@@ -224,6 +239,12 @@ impl Node {
     /// Override the class tag used by `Display` (subclasses set theirs).
     pub fn set_kind(&mut self, kind: &'static str) {
         self.kind = kind;
+    }
+
+    /// The class tag used by `Display` (`"Node"`, `"Switch"`, ... — Python's
+    /// `__class__.__name__` in `__repr__`).
+    pub fn kind(&self) -> &'static str {
+        self.kind
     }
 
     /// The node's pid (the shell's), once started (`Node.pid`).
