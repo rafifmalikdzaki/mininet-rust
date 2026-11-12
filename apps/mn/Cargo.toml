@@ -1,0 +1,10 @@
+[package]
+name = "mn"
+version = "0.1.0"
+description = "Rust port of the Mininet `mn` command-line tool (bin/mn)"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-util = { path = "../../crates/util" }
+mn-topo = { path = "../../crates/topo" }

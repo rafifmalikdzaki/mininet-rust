@@ -1,0 +1,9 @@
+[package]
+name = "mn-topo"
+version = "0.1.0"
+description = "Topology graph model ported from mininet/topo.py and mininet/topolib.py"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-util = { path = "../util" }
