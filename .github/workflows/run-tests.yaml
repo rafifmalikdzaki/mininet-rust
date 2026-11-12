@@ -83,7 +83,27 @@ jobs:
           sys.exit(0 if result.wasSuccessful() else 1)
           EOF
       - name: Run examples tests
+        timeout-minutes: 15
         run: |
           export sudo="sudo env PATH=$PATH"
           export PYTHON=${{ matrix.py }}
-          $sudo $PYTHON examples/test/runner.py -v
+          # -quick makes long tests skip themselves; the SKIP_MODULES need
+          # external daemons/hardware (sshd, cluster, host NIC) that CI
+          # runners don't have. See docs/migration/DECISIONS.md D22.
+          $sudo $PYTHON - <<'EOF'
+          import sys, unittest
+          sys.path.insert(0, '.')
+          sys.argv.append('-quick')
+          SKIP_MODULES = {'test_baresshd', 'test_clusterSanity', 'test_hwintf', 'test_sshd'}
+          suite = unittest.defaultTestLoader.discover('examples/test')
+          def filt(s):
+              out = unittest.TestSuite()
+              for t in s:
+                  if isinstance(t, unittest.TestSuite):
+                      out.addTests(filt(t))
+                  elif t.__class__.__module__.split('.')[-1] not in SKIP_MODULES:
+                      out.addTest(t)
+              return out
+          result = unittest.TextTestRunner(verbosity=1).run(filt(suite))
+          sys.exit(0 if result.wasSuccessful() else 1)
+          EOF
