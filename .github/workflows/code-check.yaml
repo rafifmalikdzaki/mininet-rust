@@ -1,22 +1,26 @@
 
 name: code-check
 
+# Legacy Python lint job (pyflakes/pylint/pep8 via `make codecheck`).
+# Modernized for current runners: ubuntu-latest moved to 26.04, where the
+# apt `pep8` package no longer exists (util/install.sh -n fails there), and
+# pylint 2.15.7 needs Python <= 3.11. Linters are pip-installed instead.
+
 on: [push, pull_request]
 
 jobs:
   code-check:
     name: Mininet Code Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Set up Python 3.x
-        uses: actions/setup-python@v2
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: '3.11'
       - name: Check out Mininet source
-        uses: actions/checkout@v2
-      - name: Install Mininet code check dependencies
+        uses: actions/checkout@v4
+      - name: Install code check dependencies (pip)
         run: |
-          PYTHON=`which python` util/install.sh -n
-          python -m pip install pylint==2.15.7
+          python -m pip install pylint==2.15.7 pyflakes==3.2.0 pep8==1.7.1
       - name: Run code check
-        run:  make codecheck
+        run: make codecheck
