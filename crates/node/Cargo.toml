@@ -10,5 +10,12 @@ mn-util = { path = "../util" }
 mn-netlink = { path = "../netlink" }
 mn-link = { path = "../link" }
 mn-topo = { path = "../topo" }
+# Direct rtnetlink stack for the LinuxBridge link ops in nodelib.rs
+# (bridge link type + enslaving live here because crates/netlink is owned
+# by another work stream; they can be upstreamed into mn-netlink later).
+rtnetlink.workspace = true
+netlink-packet-route.workspace = true
+tokio.workspace = true
+futures.workspace = true
 nix.workspace = true
 libc.workspace = true

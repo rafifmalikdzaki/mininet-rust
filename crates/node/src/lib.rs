@@ -26,8 +26,13 @@
 //! - [`Controller`] + subclasses [`OVSController`], [`RemoteController`],
 //!   [`NOX`], [`Ryu`] (task 8b): `isListening` is a std `TcpStream` probe
 //!   with timeout (works unprivileged on localhost); `NOX`/`Ryu` are stubs
-//!   with TODO `start()`. [`CPULimitedHost`] remains a stub (cgroup CPU
-//!   limiting is a later slice).
+//!   with TODO `start()`. [`CPULimitedHost`] applies its CPU limit through
+//!   cgroup v2 `cpu.max` file writes (no netlink; apply is root-gated).
+//! - [`nodelib`] (nodelib.py): [`LinuxBridge`] creates the Linux bridge
+//!   over rtnetlink (`bridge_add_msg`/`enslave_msg`/... pure builders,
+//!   real ops root-gated) instead of `brctl`; [`NAT`] keeps the iptables
+//!   rule set as retained `iptables`/`sysctl` subprocesses (no stable
+//!   netlink API for iptables) with pure, unit-tested argv builders.
 //!
 //! # Namespace lifecycle
 //!
@@ -107,6 +112,7 @@ mod mnexec;
 mod node;
 
 pub mod controller;
+pub mod nodelib;
 pub mod switch;
 
 pub use controller::{
@@ -115,18 +121,28 @@ pub use controller::{
     DEFAULT_PROTOCOL, LISTEN_PROBE_TIMEOUT, NOX,
 };
 pub use error::{Error, Result};
-pub use host::{CPULimitedHost, Host};
+pub use host::{
+    cfs_info, cgroup_dir, cgroup_v2_root, cpu_max_content, parse_cpu_param, CPULimitedHost, Host,
+};
 pub use mnexec::{
     attach_argv, mnexec_available, mnexec_available_in, mnexec_path, mnexec_path_from,
     send_cmd_line, shell_argv, which, which_in, PROMPT_SENTINEL,
 };
 pub use node::{run_in_netns, CmdOutput, Node};
+pub use nodelib::{
+    any_port_forwarding, bridge_add_msg, disenslave_msg, enslave_msg, enslaved_port_states,
+    iptables_flush_argv, iptables_flush_nat_argv, iptables_policy_argv, link_up_msg,
+    manual_config_line, manual_config_needed, msg_bridge_data, msg_ifname,
+    nat_forward_accept_dst_argv, nat_forward_accept_src_argv, nat_forward_drop_argv,
+    nat_masquerade_argv, sysctl_read_ip_forward_argv, sysctl_write_ip_forward_argv, BridgeNl,
+    LinuxBridge, NatOp, NAT, NETWORK_INTERFACES,
+};
 pub use switch::{
-    bridge_opts, controller_target, default_dpid, default_dpid_len, dpctl_listen_addr,
-    intf_opts_args, is_old_ovs_version, ivs_logfile, ivs_start_argv, ofctl_dpctl_argv,
-    ofdatapath_cmd, ofprotocol_cmd, ovs_version_from, parse_controller_uuids, ptcp_target,
-    user_switch_listen_opt, vsctl_add_br, vsctl_add_port, vsctl_batch_del_br, vsctl_del_br,
-    vsctl_del_controller, vsctl_del_port, vsctl_get_bridge_controller,
+    bridge_opts, controller_target, controller_uuids_update, default_dpid, default_dpid_len,
+    dpctl_listen_addr, intf_opts_args, is_old_ovs_version, ivs_logfile, ivs_start_argv,
+    ofctl_dpctl_argv, ofdatapath_cmd, ofprotocol_cmd, ovs_version_from, parse_controller_uuids,
+    ptcp_target, user_switch_listen_opt, vsctl_add_br, vsctl_add_port, vsctl_batch_del_br,
+    vsctl_del_br, vsctl_del_controller, vsctl_del_port, vsctl_get_bridge_controller,
     vsctl_get_controller_is_connected, vsctl_set_bridge, vsctl_set_controller,
     vsctl_set_datapath_id, vsctl_set_fail_mode, IVSSwitch, OVSBridge, OVSSwitch, Switch,
     UserSwitch, DPID_LEN, OVS_OFCTL, OVS_VSCTL, USER_DPID_LEN,

@@ -335,7 +335,8 @@ pub fn intf_opts_args(
 
 /// Parse the output of `ovs-vsctl -- get Bridge <br> Controller` into UUIDs
 /// (Python `controllerUUIDs`: strip `[...]`, split on `,`, trim; a
-/// non-bracketed non-empty output leaves the cache empty).
+/// non-bracketed non-empty output yields no UUIDs — see
+/// [`controller_uuids_update`] for the stale-cache rule).
 pub fn parse_controller_uuids(out: &str) -> Vec<String> {
     let t = out.trim();
     let Some(inner) = t.strip_prefix('[').and_then(|s| s.strip_suffix(']')) else {
@@ -346,6 +347,22 @@ pub fn parse_controller_uuids(out: &str) -> Vec<String> {
     } else {
         inner.split(',').map(|s| s.trim().to_string()).collect()
     }
+}
+
+/// Python `controllerUUIDs`' cache-update rule: the cached `_uuids` are
+/// overwritten **only** when the `-- get Bridge <br> Controller` output is
+/// a bracketed list with a non-empty body — `Some(new_uuids)`. Anything
+/// else (non-bracketed output, `[]`) returns `None` = keep the stale
+/// cache, exactly like Python's `if controllers.startswith('[') ...` guard.
+pub fn controller_uuids_update(out: &str) -> Option<Vec<String>> {
+    let t = out.trim();
+    if t.len() >= 2 && t.starts_with('[') && t.ends_with(']') {
+        let inner = &t[1..t.len() - 1];
+        if !inner.is_empty() {
+            return Some(parse_controller_uuids(out));
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------
@@ -639,7 +656,40 @@ impl DerefMut for Switch {
 
 impl fmt::Display for Switch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.node.fmt(f)
+        // Python `Switch.__repr__` iterates `intfList()`, which includes the
+        // control interface registered as `Intf('lo', port=0)` for root-ns
+        // switches — and `Intf('lo')` hard-codes ip 127.0.0.1 — so the lo
+        // entry comes first (port 0 sorts before all data ports).
+        let mut intfs: Vec<String> = Vec::new();
+        if let Some(lo) = &self.control_intf {
+            let ip = if lo.name == "lo" {
+                "127.0.0.1".to_string() // Python Intf.__init__: lo -> 127.0.0.1
+            } else {
+                lo.ip
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|| "None".to_string())
+            };
+            intfs.push(format!("{}:{ip}", lo.name));
+        }
+        intfs.extend(self.node.intf_list().iter().map(|i| {
+            let ip =
+                i.ip.map(|a| a.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+            format!("{}:{}", i.name, ip)
+        }));
+        let pid = self
+            .node
+            .pid()
+            .map(|p| p.to_string())
+            .unwrap_or_else(|| "None".to_string());
+        write!(
+            f,
+            "<{} {}: {} pid={}> ",
+            self.node.kind(),
+            self.node.name,
+            intfs.join(","),
+            pid
+        )
     }
 }
 
@@ -855,7 +905,11 @@ impl OVSSwitch {
     pub fn controller_uuids(&mut self, update: bool) -> Vec<String> {
         if self.uuids.is_empty() || update {
             if let Ok(out) = self.vsctl(&vsctl_get_bridge_controller(&self.switch.name)) {
-                self.uuids = parse_controller_uuids(&out);
+                // Python only overwrites _uuids for a bracketed non-empty
+                // list; on non-bracketed output the stale cache is kept.
+                if let Some(uuids) = controller_uuids_update(&out) {
+                    self.uuids = uuids;
+                }
             }
         }
         self.uuids.clone()
@@ -1753,8 +1807,54 @@ mod tests {
         );
         assert!(parse_controller_uuids("[]").is_empty());
         assert!(parse_controller_uuids("").is_empty());
-        // Non-bracketed output leaves the cache empty (Python's condition).
+        // Non-bracketed output yields no UUIDs (the stale-cache rule itself
+        // is controller_uuids_update below).
         assert!(parse_controller_uuids("uuid-1").is_empty());
+    }
+
+    #[test]
+    fn controller_uuids_update_keeps_stale_cache_on_non_bracketed_output() {
+        // Python: cache overwritten only for a bracketed, non-empty list.
+        assert_eq!(
+            controller_uuids_update("[uuid-1, uuid-2]\n"),
+            Some(s(&["uuid-1", "uuid-2"]))
+        );
+        assert_eq!(controller_uuids_update(" [a] "), Some(s(&["a"])));
+        assert_eq!(controller_uuids_update("[]"), None);
+        assert_eq!(controller_uuids_update(""), None);
+        assert_eq!(controller_uuids_update("uuid-1"), None);
+        assert_eq!(controller_uuids_update("some ovs-vsctl error"), None);
+    }
+
+    #[test]
+    fn controller_uuids_retains_stale_cache_when_output_is_not_a_list() {
+        // vsctl() runs ovs-vsctl, which either is absent (spawn error) or
+        // answers with non-bracketed error text when no ovsdb is running —
+        // in both cases Python keeps the stale _uuids.
+        let mut sw =
+            OVSSwitch::with_defaults("s1", None, "", None, false, BTreeMap::new()).unwrap();
+        sw.uuids = s(&["stale-uuid"]);
+        assert_eq!(sw.controller_uuids(false), s(&["stale-uuid"]));
+        assert_eq!(sw.controller_uuids(true), s(&["stale-uuid"]));
+    }
+
+    #[test]
+    fn switch_display_includes_lo_control_intf_like_python_repr() {
+        // Python registers Intf('lo', port=0) (ip 127.0.0.1) for root-ns
+        // switches, and Switch.__repr__ lists intfList() — lo first.
+        let s = Switch::new("s1", None, "", None, false, BTreeMap::new()).unwrap();
+        assert_eq!(s.to_string(), "<Switch s1: lo:127.0.0.1 pid=None> ");
+        let mut s = Switch::new("s1", None, "", None, false, BTreeMap::new()).unwrap();
+        s.node_mut()
+            .add_intf(Intf::new("s1-eth1", "s1", Some(1)), Some(1))
+            .unwrap();
+        assert_eq!(
+            s.to_string(),
+            "<Switch s1: lo:127.0.0.1,s1-eth1:None pid=None> "
+        );
+        // Namespaced switches have no control intf — unchanged behavior.
+        let s2 = Switch::new("s2", None, "", None, true, BTreeMap::new()).unwrap();
+        assert_eq!(s2.to_string(), "<Switch s2:  pid=None> ");
     }
 
     // ---- version helpers ----
