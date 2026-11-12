@@ -6,7 +6,7 @@
 #
 #   Python (reference): an embedded driver that mirrors
 #       python3 bin/mn --topo <spec> --controller none --test none
-#       (buildTopo + Mininet + net.start() + dump + links + pingall + stop),
+#       (buildTopo, Mininet, net.start(), dump, links, pingall, stop),
 #       capturing stdout.
 #   Rust (port, binary mnr):        <mn binary> --topo <spec> ... --dump
 #       (equivalent to: cargo run -p mnr -- --topo <spec> --dump)

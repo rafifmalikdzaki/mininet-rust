@@ -114,7 +114,7 @@ as a golden fixture (`fixtures/test_util_out.txt`).
   `util/versioncheck.py`, pyflakes, `pylint --rcfile=.pylint`, and pep8 with
   ignore list `E251,E201,E302,E202,E126,E127,E203,E226,E402,W504,W503,E731`.
 - **`run-tests.yaml`** (push/PR): matrix `ubuntu-22.04`/`ubuntu-20.04` ×
-  `python3`/`python2`. `util/install.sh -nv` to install Mininet + deps,
+  `python3`/`python2`. `util/install.sh -nv` to install Mininet and its deps,
   disables udevd, sanity check
   `sudo mn --switch ovs,protocols=OpenFlow13 --test pingall`, installs pexpect,
   then `sudo $PYTHON mininet/test/runner.py -v` and
