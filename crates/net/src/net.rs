@@ -695,6 +695,16 @@ impl Mininet {
             let p1 = pids.get(&link.node1).copied().flatten();
             let p2 = pids.get(&link.node2).copied().flatten();
             link.attach(&ops, p1, p2).map_err(Error::Link)?;
+            // Python creates the veth pair in the Link constructor (build
+            // time), so Switch.start could already enslave its port. The
+            // deferred Rust lifecycle creates the veth here, after
+            // Switch.start — so attach the switch-side end now that it
+            // exists in the kernel.
+            for (node, intf) in [(&link.node1, &link.intf1), (&link.node2, &link.intf2)] {
+                if let Some(sw) = self.switches.get_mut(node) {
+                    sw.attach(&intf.name)?;
+                }
+            }
             eprint!(".");
         }
         eprintln!();

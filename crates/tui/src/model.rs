@@ -298,7 +298,9 @@ impl GraphView {
                 NodeRef::Controller(_) => NodeKind::Controller,
             };
             let pid = node.pid();
-            let status = if pid.is_some() {
+            // A started root-ns switch (e.g. lxbr) has no shell, hence no
+            // pid — but it is up. `started()` covers both cases.
+            let status = if node.started() {
                 NodeStatus::Up
             } else if live {
                 NodeStatus::Down

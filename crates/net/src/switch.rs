@@ -248,6 +248,21 @@ impl NetSwitch {
         }
     }
 
+    /// Port of `Switch.attach(intf)` with subclass dispatch — connect a data
+    /// port. In Python the veth pair exists from `Link.__init__` (build time),
+    /// so `Switch.start` enslaves/adds its ports there; the deferred Rust
+    /// lifecycle creates the veth in `Link::attach` (after `Switch.start`),
+    /// so `Mininet::start` calls this right after each `link.attach`.
+    pub fn attach(&mut self, intf: &str) -> Result<()> {
+        match self {
+            Self::Ovs(s) => Ok(s.attach(intf)?),
+            Self::Bridge(s) => Ok(s.ovs_mut().attach(intf)?),
+            Self::User(_) => Ok(()), // UserSwitch binds its ports at process start
+            Self::Ivs(s) => Ok(s.attach(intf)?),
+            Self::LxBr(s) => Ok(s.attach(intf)?),
+        }
+    }
+
     /// Port of `Switch.start(controllers)` with subclass dispatch — this is
     /// what makes `Mininet::start` work on switch-bearing topos (root).
     pub fn start(&mut self, controllers: &[&Controller]) -> Result<()> {
@@ -256,7 +271,13 @@ impl NetSwitch {
             Self::Bridge(s) => Ok(s.start(controllers)?),
             Self::User(s) => Ok(s.start(controllers)?),
             Self::Ivs(s) => Ok(s.start(controllers)?),
-            Self::LxBr(s) => Ok(s.start(controllers)?),
+            Self::LxBr(s) => {
+                s.start(controllers)?;
+                // A root-ns LinuxBridge has no shell, hence no pid — mark
+                // it started so `started()`/graph status/stop see it.
+                s.switch_mut().node_mut().mark_started();
+                Ok(())
+            }
         }
     }
 

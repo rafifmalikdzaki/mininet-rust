@@ -181,6 +181,9 @@ pub struct Node {
     last_pid: Option<u32>,
     /// Whether the node execed into a single process (`Node.execed`).
     execed: bool,
+    /// Set by `start()` (or `mark_started` for shell-less root-ns switches
+    /// like LinuxBridge, which have no pid) — `started()` is pid OR this.
+    started_flag: bool,
     /// Lazily opened netlink handle in the orchestrator's namespace.
     nl: Option<Netlink>,
 }
@@ -210,6 +213,7 @@ impl Node {
             last_cmd: None,
             last_pid: None,
             execed: false,
+            started_flag: false,
             nl: None,
         }
     }
@@ -259,7 +263,14 @@ impl Node {
 
     /// Whether `start()` has run and `stop()` has not.
     pub fn started(&self) -> bool {
-        self.pid.is_some()
+        self.pid.is_some() || self.started_flag
+    }
+
+    /// Mark the node started without a shell pid — used by shell-less
+    /// root-namespace switches (LinuxBridge) whose `start()` creates a
+    /// kernel bridge instead of spawning a shell.
+    pub fn mark_started(&mut self) {
+        self.started_flag = true;
     }
 
     /// Whether a command is currently in flight (`Node.waiting`).
@@ -424,6 +435,7 @@ impl Node {
         self.shell_out = Some(read_end);
         self.shell = Some(child);
         self.pid = Some(self.shell.as_ref().expect("shell just set").id());
+        self.started_flag = true;
         // Defense in depth against the holder/setns race: with the
         // readiness handshake in spawn_holder the shell can only attach to
         // a holder that is already inside the named netns, but verify it
@@ -606,6 +618,7 @@ impl Node {
             self.netns_created = false;
         }
         self.pid = None;
+        self.started_flag = false;
         self.waiting = false;
         self.last_cmd = None;
         self.last_pid = None;
