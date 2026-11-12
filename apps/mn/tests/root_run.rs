@@ -1,5 +1,7 @@
-//! Root-gated end-to-end test for the wired `mn` (task 10b): a real
-//! `single,3` run with `--test pingall` on a privileged host.
+//! Root-gated end-to-end tests for the wired `mn` (tasks 10b/10c): a real
+//! `single,3` run with `--test pingall`, and the interactive `cli.py` loop
+//! (`mn::repl`) driven with a scripted stdin against the started net, on a
+//! privileged host.
 //!
 //! Run on a root Linux host with netns support and OVS installed:
 //!   MN_RUST_ROOT_TESTS=1 cargo test -p mn --test root_run -- --ignored --test-threads=1
@@ -11,6 +13,63 @@
 mod support;
 
 use support::run_mn;
+
+/// Root-gated interactive-loop test (task 10c): build + start a real
+/// `single,3` net, then drive `mn::repl::run_with_io` with a scripted stdin
+/// (`nodes`/`dump`/`links`/`pingall`/`ping h1 h2`/`exit`) and check the
+/// cli.py-format output — real pids in `dump`, `(OK OK)` links, and a 0%-loss
+/// `pingall`.
+#[test]
+#[ignore = "requires root + netns + OVS on a privileged Linux host/CI; run with MN_RUST_ROOT_TESTS=1 cargo test -p mn --test root_run -- --ignored --test-threads=1"]
+fn root_repl_interactive_loop_single3() {
+    if !std::env::var("MN_RUST_ROOT_TESTS").is_ok_and(|v| v == "1") {
+        return;
+    }
+    use mn_net::{Mininet, MininetOptions};
+
+    let mut net = Mininet::dry_run(
+        "single,3",
+        MininetOptions {
+            controller: None,
+            listen_port: Some(6654),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    net.start().unwrap();
+    let script = "nodes\ndump\nlinks\npingall\nping h1 h2\nexit\n";
+    let mut input = std::io::Cursor::new(script.as_bytes().to_vec());
+    let mut out: Vec<u8> = Vec::new();
+    let mut err: Vec<u8> = Vec::new();
+    let code = mn::repl::run_with_io(&mut net, &mut input, &mut out, &mut err, false);
+    let out = String::from_utf8(out).expect("out is UTF-8");
+    let err = String::from_utf8(err).expect("err is UTF-8");
+    let stop = net.stop();
+    assert_eq!(code, 0);
+    stop.unwrap();
+    assert!(
+        out.starts_with("available nodes are: \nh1 h2 h3 s1\n"),
+        "out: {out:?}"
+    );
+    // dump carries real pids on a started net
+    assert!(
+        out.contains("<Host h1: h1-eth0:10.0.0.1 pid="),
+        "out: {out:?}"
+    );
+    assert!(!out.contains("pid=None"), "out: {out:?}");
+    // links report OK after attach
+    assert!(out.contains("h1-eth0<->s1-eth1 (OK OK) \n"), "out: {out:?}");
+    // pingall: 6 pings on single,3, 0% loss; ping h1 h2: 2 pings, 0% loss
+    assert!(
+        out.contains("*** Results: 0% dropped (6/6 received)"),
+        "out: {out:?}"
+    );
+    assert!(
+        out.contains("*** Results: 0% dropped (2/2 received)"),
+        "out: {out:?}"
+    );
+    assert_eq!(err, "", "err: {err:?}");
+}
 
 #[test]
 #[ignore = "requires root + netns + OVS on a privileged Linux host/CI; run with MN_RUST_ROOT_TESTS=1 cargo test -p mn --test root_run -- --ignored --test-threads=1"]
