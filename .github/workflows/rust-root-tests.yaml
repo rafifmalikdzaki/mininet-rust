@@ -1,0 +1,86 @@
+name: rust-root-tests
+
+# Task 12 (CI part) of tasks/plan.md: the privileged CI job for the root-gated
+# suites. Complements rust-ci.yaml (unprivileged: fmt/check/clippy/test/release
+# build). This job runs in a privileged container (root + CAP_NET_ADMIN +
+# netns), per docs/migration/TESTING.md section 2.4 (Option A).
+
+on:
+  push:
+    branches: [rust-migration, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  root-tests:
+    name: Root-gated tests + Python-vs-Rust diff (privileged container)
+    runs-on: ubuntu-latest
+    allow-failure: false
+    container:
+      image: ubuntu:24.04
+      options: --privileged   # netns + CAP_NET_ADMIN; container jobs run as root
+    env:
+      # scripts/diff_topology.sh drives the Python reference side
+      # (mininet/*.py, untouched) via an embedded python3 driver; the harness
+      # sets PYTHONPATH itself, but export it here too so the Python modules
+      # resolve from the repo root (checkout dir = GITHUB_WORKSPACE).
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        # rust-toolchain.toml pins channel = "stable"; Cargo.lock is committed.
+
+      # Host deps for BOTH sides. apt only — nothing is pip-installed.
+      # Python reference side needs: python3, ip (iproute2), ifconfig
+      # (net-tools), mnexec (built below from mnexec.c), ovs-vsctl
+      # (openvswitch-switch, default switch class OVSSwitch), brctl
+      # (bridge-utils), ethtool (link status). Rust side needs cargo only.
+      - name: Install host dependencies (apt only, no pip)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            python3 iproute2 net-tools bridge-utils ethtool \
+            openvswitch-switch gcc make
+          python3 --version
+
+      # Python mininet pathCheck()s 'mnexec' and 'ifconfig' at Host setup;
+      # build the C helper from the repo and put it on PATH.
+      - name: Build mnexec and install it on PATH
+        run: |
+          make mnexec PYTHON=python3
+          install -D mnexec /usr/local/bin/mnexec
+          which mnexec && mnexec 2>&1 | head -n 1 || true
+
+      # No systemd inside the container: start the OVS daemons by hand so
+      # ovs-vsctl (OVSSwitch default) works.
+      - name: Start Open vSwitch daemons (container has no systemd)
+        run: |
+          mkdir -p /var/run/openvswitch /var/log/openvswitch
+          if ! ovs-vsctl show >/dev/null 2>&1; then
+            ovsdb-server --remote=punix:/var/run/openvswitch/db.sock \
+              --pidfile=/var/run/openvswitch/ovsdb-server.pid --detach \
+              --log-file=/var/log/openvswitch/ovsdb-server.log
+            ovs-vswitchd --pidfile=/var/run/openvswitch/ovs-vswitchd.pid --detach \
+              --log-file=/var/log/openvswitch/ovs-vswitchd.log
+          fi
+          ovs-vsctl show
+
+      # Release build first: scripts/diff_topology.sh prefers
+      # target/release/mn as the Rust side of the differential harness.
+      - name: Build the workspace (release)
+        run: cargo build --workspace --release
+
+      # 1. Root-gated netlink/netns integration tests (#[ignore] + env gate,
+      #    serialized because some tests fork children that change namespaces).
+      - name: Root-gated cargo tests (MN_RUST_ROOT_TESTS=1)
+        run: MN_RUST_ROOT_TESTS=1 cargo test --workspace -- --ignored --test-threads=1
+
+      # 2. One-shot root suite: re-runs the root-gated cargo tests and then
+      #    scripts/diff_topology.sh for single,3 linear,4 tree,2,2, diffing
+      #    the normalized Python reference dump vs the Rust `mn --dump`
+      #    output (MATCH/MISMATCH per spec). Exits non-zero on any failure.
+      - name: Full root suite + differential topology harness
+        run: sh scripts/run_root_tests.sh

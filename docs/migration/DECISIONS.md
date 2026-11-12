@@ -125,3 +125,78 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
 - **Decision:** `rust-toolchain.toml` pins `stable`; edition 2021; `Cargo.lock`
   committed; CI runs fmt/check/clippy `-D warnings`/test/release build
   (`.github/workflows/rust-ci.yaml`).
+
+## D14 — `--dump` is a harness-only flag beyond `bin/mn`'s optparse
+- **Decision:** `mn --dump` prints the `=== topo ===` / `=== dump ===` /
+  `=== links ===` sections (the `cli.py` `do_dump`/`do_links` format that
+  `scripts/diff_topology.sh` expects) and exits. It is **not** one of
+  `bin/mn`'s optparse options — it exists so the differential harness has a
+  scriptable, non-root probe of parse → build → plan. It is whitelisted as
+  the single allowed extra option in the help differential test
+  (`apps/mn/tests/help_differential.rs`, `allowed_extra = {"dump"}`), so the
+  golden `--help` comparison still fails on any *other* drift.
+- **Why:** the real Python equivalent of "print the topology without a live
+  net" is the interactive CLI's `dump` command, which needs a started net;
+  the harness needs the same output root-free to run in the unprivileged
+  tier. Non-root, `--dump` takes the dry-run (no-kernel) path and exits 0.
+- **Where:** `apps/mn/src/cli.rs` (flag), `apps/mn/src/runner.rs` (dry-run
+  wiring to mn-net).
+- **Revisit:** if upstream ever wants a `mn --dump`-style flag, align its
+  semantics with `cli.py dump` on a live net instead of the plan.
+
+## D15 — iptables/sysctl/OVS stay subprocesses; netlink for all kernel link/addr/route/qdisc/bridge ops
+- **Decision:** refining D2: **every** kernel link/address/route/qdisc/
+  bridge/veth/netns operation goes through rtnetlink (`crates/netlink`,
+  `crates/link`) — no `ip`/`tc`/`ifconfig`/`brctl` shell-outs. The retained
+  subprocesses are exactly three families, none of which are plain kernel
+  link config: `iptables` (NAT rules, `crates/node` NAT), `sysctl` (a few
+  host sysctls), and `ovs-vsctl`/`ovs-ofctl` (the OVS/OpenFlow control
+  plane, which is a userspace daemon's CLI, not kernel config).
+- **Why:** the containerlab lesson applies to kernel configuration, where
+  parsing CLI-tool output is slow and fragile; iptables-nft and the OVSDB
+  control protocol are separate, much larger surfaces whose Rust crates are
+  not yet verifiable in this environment.
+- **Revisit:** if NAT or OVS control shows up in benchmarks
+  (`docs/migration/BENCHMARKS.md`), evaluate `nftnl`/`mnl` and an OVSDB
+  client crate as their own tasks.
+
+## D16 — Deferred lifecycle: pure model build, explicit `start()`; `stop()` is the exact reverse of `start()` with full cleanup
+- **Decision:** at the orchestrator level (extending D9): `Topo::build` and
+  `Mininet::buildFromTopo` are pure model construction — zero kernel side
+  effects. All side effects live in the explicit `start()`; `stop()` undoes
+  `start()` in the exact reverse order and always runs full cleanup
+  (kill process groups → reap → delete veths/qdiscs → delete netns), even
+  on error paths, returning the first error encountered during cleanup.
+- **Why:** the parse → build → plan path (including `mn --dump`, D14) is
+  then testable without root, and a failed `start()` can never leak
+  half-created namespaces or links.
+- **Where:** `crates/net/src/net.rs`, `crates/node/src/node.rs`,
+  `crates/link`.
+- **Revisit:** a `Drop` impl may later call `stop()` defensively — `stop()`
+  must therefore stay idempotent (it already is: it errors/no-ops on an
+  unstarted net rather than touching the root namespace).
+
+## D17 — Out of v1 scope: miniedit GUI, consoles, cluster, mobility, NOX/Ryu, HTB-via-netlink
+- **Decision:** v1 targets the `bin/mn` + `cli.py` core (create / destroy /
+  inspect / built-in tests) with the `default`/`ovs`/`lxbr` switches,
+  `proc`/`cfs`/`rt` hosts, and `Link`/`TCLink` params. Explicitly deferred,
+  each a self-contained Python module to port later behind the same
+  interfaces:
+  - **miniedit GUI** (`mininet/miniedit.py`),
+  - **consoles via other backends** — `mininet/term.py` IS ported (xterm/socat
+    argv builders + `--xterms` wiring, Task 10d); only non-xterm console
+    backends remain out of scope,
+  - **cluster** (`mininet/cluster.py`, `--cluster`/`--placement`),
+  - **mobility** (`mininet/mobility.py`),
+  - **NOX/Ryu controller runtimes** (`crates/node/src/controller.rs` —
+    stubs whose `start()` returns a marked TODO error; the rest of the
+    Controller surface is ported),
+  - **HTB qdisc via netlink** (D3 — `bw` maps to netem rate until a
+    privileged CI can verify HTB blobs),
+  - plus `--innamespace` (control network) and `--custom` (exec Python
+    files) as marked TODOs in `mn-net`/`apps/mn`.
+- **Why:** the surface is too large for one migration pass; deferring keeps
+  the v1 gate (differential parity on topos + CLI + netlink core) achievable
+  and reviewable.
+- **Revisit:** per feature, when an example/test needs it; each lands with
+  its own decision entry and differential tests.
