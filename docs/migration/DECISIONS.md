@@ -324,3 +324,28 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   (ping tests) and `openvswitch-testcontroller` + a `controller` shim
   (default controller c0, same shim as run-tests.yaml), and remounts
   cgroup2 rw when possible.
+
+## D24 — deferred veth lifecycle: switch ports must attach after Link::attach; lxbr needs a started flag
+
+- **Found by:** root app tests switched to `--switch lxbr` (GH privileged
+  containers cannot load the OVS kernel datapath module, so OVS ping tests
+  blackhole and hang there — OVS itself stays covered by
+  `switch::tests::ovs_*` and the legacy VM workflow). With lxbr the bridge
+  came up with **zero ports** and ping was 100% loss.
+- **Root cause:** Python creates the veth pair in the `Link` constructor
+  (build time), so `LinuxBridge.start` finds its ports and `brctl addif`s
+  them. The Rust port defers veth creation to `Link::attach`, which
+  `Mininet::start` runs *after* `Switch.start` — so at bridge-start time no
+  kernel ports exist and the enslave loop silently skips them.
+- **Fix:** `Mininet::start` now calls the new `NetSwitch::attach` for each
+  switch-side link end right after `link.attach` (dispatch to
+  OVSSwitch/OVSBridge/IVSSwitch/LinuxBridge attach).
+- **Related:** a root-ns LinuxBridge has no shell, hence no pid, so
+  `Node::started()` (pid-based) was always false for it — the TUI/MCP
+  graph showed the switch "down" and `NetSwitch::stop` took the model-only
+  path, leaking the kernel bridge. `Node` now has a `started_flag` (set by
+  `start()`/`mark_started`, cleared by `terminate`); lxbr is marked started
+  in `NetSwitch::start`, and the graph uses `started()`.
+- **Verified:** full root suite in a privileged container — everything
+  green except the two netem tests, which need sch_netem (absent from the
+  sandbox host kernel; they pass on CI's ubuntu-24.04 kernel).
