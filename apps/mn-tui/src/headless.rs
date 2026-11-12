@@ -6,7 +6,7 @@
 //! `i % len` with the detail pane on even frames.
 
 use mn_net::Mininet;
-use mn_tui::{render_frame, GraphView, Layout, StringGrid, View};
+use mnr_tui::{render_frame, GraphView, Layout, StringGrid, View};
 
 use crate::app::FOOTER;
 use crate::cli::Args;
@@ -62,7 +62,7 @@ fn run_export(
         let status = format!("frame {i_plus}/{n} (headless, {mode} mode)", i_plus = i + 1);
         render_frame(
             &mut grid,
-            &mn_tui::Frame {
+            &mnr_tui::Frame {
                 graph: &graph,
                 layout: &layout,
                 view: &view,

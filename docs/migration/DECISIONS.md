@@ -202,7 +202,7 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   its own decision entry and differential tests.
 
 ## D18 — OMO-style live graph TUI (Task 13)
-- **Decision:** `mn-tui` (ratatui) renders the emulated network as a live graph,
+- **Decision:** `mnr-tui` (ratatui) renders the emulated network as a live graph,
   the way OMO (omo.dev) renders agent workflows as dependency graphs: nodes as
   boxes (host green / switch yellow / controller cyan / selected bold),
   edges as unicode lines colored by link status, detail pane on select.
@@ -211,14 +211,14 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   dry-run plan; live mode root-gated.
 
 ## D19 — MCP server for native AI-tool integration (Task 14)
-- **Decision:** `mn-mcp` speaks MCP (JSON-RPC 2.0 over stdio) exposing
+- **Decision:** `mnr-mcp` speaks MCP (JSON-RPC 2.0 over stdio) exposing
   topo_list/topo_plan/graph/net_build/net_start/net_stop/pingall/ping/dump/
   links/host_cmd/net_release, so any MCP-capable AI agent can drive simulations.
   Mutating tools (net_start/stop, host_cmd) hard-fail unless euid 0.
-- **Why:** lets AI tools (incl. Vibe itself via `vibe mcp add mn-mcp`) create
+- **Why:** lets AI tools (incl. Vibe itself via `vibe mcp add mnr-mcp`) create
   topos, run sims, inspect graphs. Trust model: stdio-only transport, client is
   the local spawning user; never expose over a network transport.
-- **Revisit:** align the graph JSON dialect with mn-tui GraphView (polish task).
+- **Revisit:** align the graph JSON dialect with mnr-tui GraphView (polish task).
 
 ## D20 — Rust CLI binary is `mnr`, not `mn`
 - **Decision:** the Rust port installs as `mnr` (package `mnr`, `[[bin]] mnr`)

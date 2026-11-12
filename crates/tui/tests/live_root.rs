@@ -6,7 +6,7 @@
 //! `MN_RUST_ROOT_TESTS=1 cargo test -p mn-tui -- --ignored --test-threads=1`
 
 use mn_net::{Mininet, MininetOptions};
-use mn_tui::{EdgeStatus, GraphView, NodeStatus};
+use mnr_tui::{EdgeStatus, GraphView, NodeStatus};
 
 fn root_tests_enabled() -> bool {
     std::env::var("MN_RUST_ROOT_TESTS").is_ok_and(|v| v == "1")

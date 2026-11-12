@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use mn_net::{Mininet, MininetOptions};
 use mn_topo::build_topo;
-use mn_tui::{EdgeStatus, GraphView, NodeKind, NodeStatus};
+use mnr_tui::{EdgeStatus, GraphView, NodeKind, NodeStatus};
 
 fn fixture() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/topo_single3.txt");

@@ -852,25 +852,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mn-mcp"
-version = "0.1.0"
-dependencies = [
- "mn-net",
- "mn-tui",
- "mn-util",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "mn-mcp-app"
-version = "0.1.0"
-dependencies = [
- "mn-mcp",
- "serde_json",
-]
-
-[[package]]
 name = "mn-net"
 version = "0.1.0"
 dependencies = [
@@ -914,30 +895,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mn-tui"
-version = "0.1.0"
-dependencies = [
- "mn-link",
- "mn-net",
- "mn-topo",
- "mn-util",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "mn-tui-app"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crossterm",
- "mn-net",
- "mn-tui",
- "ratatui",
- "serde_json",
-]
-
-[[package]]
 name = "mn-util"
 version = "0.1.0"
 
@@ -957,6 +914,49 @@ dependencies = [
  "mn-net",
  "mn-topo",
  "mn-util",
+]
+
+[[package]]
+name = "mnr-mcp"
+version = "0.1.0"
+dependencies = [
+ "mn-net",
+ "mn-util",
+ "mnr-tui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mnr-mcp-app"
+version = "0.1.0"
+dependencies = [
+ "mnr-mcp",
+ "serde_json",
+]
+
+[[package]]
+name = "mnr-tui"
+version = "0.1.0"
+dependencies = [
+ "mn-link",
+ "mn-net",
+ "mn-topo",
+ "mn-util",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mnr-tui-app"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "mn-net",
+ "mnr-tui",
+ "ratatui",
+ "serde_json",
 ]
 
 [[package]]

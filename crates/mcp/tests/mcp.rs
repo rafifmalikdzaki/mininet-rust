@@ -4,7 +4,7 @@
 
 use std::io::{BufReader, Cursor};
 
-use mn_mcp::{registry, Server};
+use mnr_mcp::{registry, Server};
 use serde_json::{json, Value};
 
 /// Whether root/namespace integration tests should actually run (same

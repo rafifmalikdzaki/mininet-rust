@@ -11,7 +11,7 @@
 
 use std::io::{BufReader, Write};
 
-use mn_mcp::{Server, Session};
+use mnr_mcp::{Server, Session};
 use serde_json::json;
 
 const USAGE: &str = "usage: mn-mcp [--spec <topo-spec>]\n\
@@ -52,9 +52,9 @@ fn main() {
     }
     eprintln!(
         "[mn-mcp] serving MCP (protocol {}) on stdio as {SERVER} v{}",
-        mn_mcp::PROTOCOL_VERSION,
+        mnr_mcp::PROTOCOL_VERSION,
         env!("CARGO_PKG_VERSION"),
-        SERVER = mn_mcp::SERVER_NAME,
+        SERVER = mnr_mcp::SERVER_NAME,
     );
 
     let mut server = Server::with_session(session);

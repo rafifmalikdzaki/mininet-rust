@@ -16,7 +16,7 @@
 //!   [`Mininet`] (`live=true`: link status from the link/intf model, node
 //!   status from pids). `GraphView` serializes to JSON — this is the
 //!   **canonical graph shape**: `mn-tui --json` emits it, and the MCP
-//!   server (`crates/mcp`, `mn_tui::GraphView` reused in
+//!   server (`crates/mcp`, `mnr_tui::GraphView` reused in
 //!   `crates/mcp/src/graph.rs`) serves it as the `topo_plan`/`graph`/
 //!   `net_build` payloads, with lowercase enum values matching the
 //!   `fixtures/topo_*.txt` outputs.

@@ -50,8 +50,8 @@ via netlink, never shell out to `ip`/`tc`**.
 $ cargo build --workspace --release
 $ sudo target/release/mnr --topo tree,2,2     # real emulation (needs root)
 $ target/release/mnr --topo single,3 --dump    # dry-run plan, no root needed
-$ target/release/mn-tui --topo tree,2,2       # OMO-style live graph TUI
-$ target/release/mn-mcp                        # MCP server for AI agents
+$ target/release/mnr-tui --topo tree,2,2       # OMO-style live graph TUI
+$ target/release/mnr-mcp                        # MCP server for AI agents
 ```
 
 Highlights:
@@ -60,11 +60,11 @@ Highlights:
   the original Python code and assert identical outputs (5 536 util cases,
   52 topo cases, 11 net-plan specs, golden CLI sessions); root-gated suites
   diff `mnr --dump` against Python `mn` on a complexity ladder.
-- **`mn-tui`** — live topology graph TUI (OMO-style: nodes as boxes, edges by
+- **`mnr-tui`** — live topology graph TUI (OMO-style: nodes as boxes, edges by
   link status, pan/zoom/select), headless `--frames`/`--json` for CI.
-- **`mn-mcp`** — [MCP](https://modelcontextprotocol.io/) server exposing
+- **`mnr-mcp`** — [MCP](https://modelcontextprotocol.io/) server exposing
   `topo_plan`, `graph`, `net_start/stop`, `pingall`, `host_cmd`, … to any
-  AI tool: `vibe mcp add mn-mcp --transport stdio --command "$PWD/target/release/mn-mcp"`.
+  AI tool: `vibe mcp add mnr-mcp --transport stdio --command "$PWD/target/release/mnr-mcp"`.
 - Full decision log, architecture map, and progress ledger in
   [`docs/migration/`](docs/migration/PROGRESS.md).
 

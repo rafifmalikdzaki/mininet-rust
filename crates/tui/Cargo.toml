@@ -1,5 +1,5 @@
 [package]
-name = "mn-tui"
+name = "mnr-tui"
 version = "0.1.0"
 description = "Terminal-free graph model + layered layout + cell-buffer renderer for the emulated network (OMO-style live graph TUI core; used by the mn-tui binary and later the MCP server)"
 edition.workspace = true

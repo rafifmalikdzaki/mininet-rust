@@ -13,11 +13,11 @@ Layout
 .. code-block:: text
 
    crates/  util topo netlink link node net tui mcp   (libraries)
-   apps/    mn (CLI)  mnexec (namespace exec helper)  mn-tui  mn-mcp
+   apps/    mn (CLI)  mnexec (namespace exec helper)  mnr-tui  mnr-mcp
 
 Dependency direction: ``util ← topo``, ``netlink`` at the base,
 ``link ← util+netlink``, ``node ← all``, ``net ← topo+node+link``,
-``mn ← net``, ``mn-tui``/``mn-mcp ← net``.
+``mn ← net``, ``mnr-tui``/``mnr-mcp ← net``.
 
 Build & run
 -----------
@@ -60,9 +60,9 @@ What is ported
      - ported, golden-tested vs live CPython sessions
    * - ``mnexec.c``
      - ported as ``apps/mnexec`` (byte-identical usage)
-   * - ``mn-tui``
+   * - ``mnr-tui``
      - OMO-style live graph TUI (see :doc:`tui`)
-   * - ``mn-mcp``
+   * - ``mnr-mcp``
      - MCP server for AI tools (see :doc:`mcp`)
 
 Known TODOs: HTB bandwidth shaping via netlink (bw currently maps to netem

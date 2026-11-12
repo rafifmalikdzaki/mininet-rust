@@ -1,13 +1,13 @@
-mn-mcp — drive simulations from AI tools
+mnr-mcp — drive simulations from AI tools
 =========================================
 
-``mn-mcp`` is a `Model Context Protocol <https://modelcontextprotocol.io/>`_
+``mnr-mcp`` is a `Model Context Protocol <https://modelcontextprotocol.io/>`_
 server (JSON-RPC 2.0 over stdio) that exposes the network graph and the
 simulator to any MCP-capable AI agent — including this CLI:
 
 .. code-block:: console
 
-   $ vibe mcp add mn-mcp --transport stdio --command "$(pwd)/target/release/mn-mcp"
+   $ vibe mcp add mnr-mcp --transport stdio --command "$(pwd)/target/release/mnr-mcp"
 
 Tools
 -----
@@ -38,8 +38,8 @@ Tools
 
 Security model: stdio transport only; the client is the local user who spawned
 the server. ``net_start``/``net_stop``/``host_cmd`` hard-fail unless euid 0.
-Never expose ``mn-mcp`` over a network transport.
+Never expose ``mnr-mcp`` over a network transport.
 
 The graph JSON is the same canonical shape the TUI uses
-(``mn-tui --json``), defined once in ``crates/tui`` and shared with
+(``mnr-tui --json``), defined once in ``crates/tui`` and shared with
 ``crates/mcp``.

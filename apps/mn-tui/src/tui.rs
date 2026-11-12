@@ -1,5 +1,5 @@
 //! The ratatui + crossterm interactive loop (task 13). This is a thin
-//! adapter: all drawing goes through `mn_tui::render_frame` into a
+//! adapter: all drawing goes through `mnr_tui::render_frame` into a
 //! [`CellBuffer`] implemented over the ratatui frame buffer, so the headless
 //! `--frames` output and the live UI are pixel-identical.
 //!
@@ -12,7 +12,7 @@ use std::io::stdout;
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event};
-use mn_tui::render::{CellBuffer, Color, Style};
+use mnr_tui::render::{CellBuffer, Color, Style};
 use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -150,7 +150,7 @@ fn map_color(c: Color) -> RatColor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mn_tui::{render_frame, Frame, GraphView, Layout, StringGrid, View};
+    use mnr_tui::{render_frame, Frame, GraphView, Layout, StringGrid, View};
 
     fn dry_graph() -> GraphView {
         let net = mn_net::Mininet::dry_run(

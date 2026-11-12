@@ -1,7 +1,7 @@
 //! Command-line surface of `mn-tui` (task 13).
 //!
 //! Modes:
-//! - `--json`: dump the [`GraphView`](mn_tui::GraphView) of the dry-run plan
+//! - `--json`: dump the [`GraphView`](mnr_tui::GraphView) of the dry-run plan
 //!   as JSON and exit (also the payload the MCP server will serve).
 //! - `--frames N`: render N frames headless into a `StringGrid` and print
 //!   them to stdout (CI / non-tty), then exit.

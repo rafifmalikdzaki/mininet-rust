@@ -27,8 +27,8 @@ reviewed, gate-green work, atomic per category, no AI attribution.
 - [x] Sphinx docs site (docs/) + modernized README
 - [x] bench_scenarios.sh ladder + CI artifact; diff ladder extended
 - [ ] fill BENCHMARKS.md results from CI artifact
-- [x] T13 mn-tui graph TUI (c6ee867)
-- [x] T14 mn-mcp MCP server (e8b42fd)
+- [x] T13 mnr-tui graph TUI (c6ee867)
+- [x] T14 mnr-mcp MCP server (e8b42fd)
 - [x] T10b wire mn -> mn-net (5adb7e0): --topo/--dump/--test, non-root dry-run path
 - [x] T10c repl.rs interactive loop (ed56dbc): nodes/links/dump/net/ports/hosts/switches/controllers/ping/pingall/iperf/dpctl/route/xterm/exit (2-3 cmds per commit, golden tests)
 - [ ] T10d parity polish (agent repl-polish) (sh passthrough, intfs, py escape optional)

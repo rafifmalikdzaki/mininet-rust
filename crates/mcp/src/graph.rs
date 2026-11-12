@@ -1,7 +1,7 @@
 //! Graph JSON builders shared by the `topo_plan` / `graph` / `net_build`
 //! tools.
 //!
-//! The canonical graph shape is [`mn_tui::GraphView`] — the same type
+//! The canonical graph shape is [`mnr_tui::GraphView`] — the same type
 //! `mn-tui --json` emits (lowercase `kind`/`status` values matching the
 //! `fixtures/topo_*.txt` characterization outputs, edges carrying both
 //! the `label` and the fixture-matching `intf1`/`intf2`/`port1`/`port2`
@@ -25,7 +25,7 @@
 //! `running` / `built` (and `planned` for `topo_plan`) are added.
 
 use mn_net::{Mininet, MininetOptions};
-use mn_tui::GraphView;
+use mnr_tui::GraphView;
 use serde_json::Value;
 
 /// The full graph JSON for a built [`Mininet`] model: the canonical

@@ -3,7 +3,7 @@
 //! compared against a golden, plus hit-test and color assertions.
 
 use mn_net::{Mininet, MininetOptions};
-use mn_tui::{
+use mnr_tui::{
     hit_test, node_rect, render_frame, Color, Frame, GraphView, Layout, StringGrid, View,
 };
 

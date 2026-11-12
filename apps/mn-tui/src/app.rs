@@ -1,11 +1,11 @@
 //! Interactive application state for `mn-tui` (task 13): owns the `Mininet`
 //! (when live), the [`GraphView`] snapshot, the layout/view, the selection,
-//! and the keybindings. Rendering goes through `mn_tui::render_frame` into
+//! and the keybindings. Rendering goes through `mnr_tui::render_frame` into
 //! any [`CellBuffer`]; the ratatui loop in `tui.rs` is a thin adapter.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use mn_net::Mininet;
-use mn_tui::{render_frame, CellBuffer, GraphView, Layout, View};
+use mnr_tui::{render_frame, CellBuffer, GraphView, Layout, View};
 
 use crate::cli::Args;
 
@@ -95,7 +95,7 @@ impl App {
             .graph
             .nodes
             .iter()
-            .filter(|n| n.status == mn_tui::NodeStatus::Up)
+            .filter(|n| n.status == mnr_tui::NodeStatus::Up)
             .count();
         self.status = format!(
             "tick {} — {} nodes ({} up), {} links, spec {:?}",
@@ -175,7 +175,7 @@ impl App {
         view.resize(buf.width(), buf.height());
         render_frame(
             buf,
-            &mn_tui::Frame {
+            &mnr_tui::Frame {
                 graph: &self.graph,
                 layout: &self.layout,
                 view: &view,
