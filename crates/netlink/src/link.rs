@@ -323,26 +323,54 @@ mod tests {
         if !root_tests_enabled() {
             return;
         }
-        use crate::ns::{netns_add, netns_del, setns_name};
+        use crate::ns::{
+            netns_add, netns_del, netns_path, pipe_pair, send_ready_byte, setns_path_raw,
+            wait_ready_byte,
+        };
+        use std::ffi::CString;
+        use std::os::fd::AsRawFd;
+        use std::os::unix::ffi::OsStrExt;
+        use std::time::Duration;
         let ns = format!("mnrt{}", std::process::id());
         let _ = netns_del(&ns);
         netns_add(&ns).unwrap();
 
         // Spawn a child that lives in the new netns so we have a pid to
-        // move interfaces to (like a mininet host process).
-        // SAFETY: child calls setns_name + pause loop + raw _exit only.
+        // move interfaces to (like a mininet host process). The child
+        // setns'es via a pre-allocated path (no allocation after fork) and
+        // then writes a readiness byte to the handshake pipe; the parent
+        // blocks on that byte before using the pid — otherwise
+        // move_to_netns_pid(holder) could race the child's setns and move
+        // the interface into the *root* ns instead.
+        let c_path = CString::new(netns_path(&ns).unwrap().as_os_str().as_bytes()).unwrap();
+        let (rdy_read, rdy_write) = pipe_pair().unwrap();
+        // SAFETY: child calls setns_path_raw (open+setns+close on the
+        // pre-allocated CString), send_ready_byte/close (raw write), then a
+        // pause loop, and _exit on failure — no allocation after fork.
         let holder = unsafe { nix::unistd::fork().unwrap() };
         let holder_pid = match holder {
             nix::unistd::ForkResult::Child => {
-                if setns_name(&ns).is_err() {
-                    // SAFETY: raw syscall.
-                    unsafe { libc::_exit(1) };
+                drop(rdy_read);
+                if setns_path_raw(&c_path).is_ok() {
+                    send_ready_byte(rdy_write.as_raw_fd());
+                    // SAFETY: close(2) is async-signal-safe.
+                    unsafe { libc::close(rdy_write.as_raw_fd()) };
+                    loop {
+                        // SAFETY: raw syscall; returns only on a signal.
+                        unsafe { libc::pause() };
+                    }
                 }
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(60));
-                }
+                // SAFETY: raw syscall only.
+                unsafe { libc::_exit(1) };
             }
-            nix::unistd::ForkResult::Parent { child } => child,
+            nix::unistd::ForkResult::Parent { child } => {
+                drop(rdy_write);
+                let ready = wait_ready_byte(rdy_read.as_raw_fd(), Duration::from_secs(10))
+                    .expect("holder readiness wait");
+                drop(rdy_read);
+                assert!(ready, "holder exited before entering the netns");
+                child
+            }
         };
 
         let nl = Netlink::new().unwrap();
@@ -350,7 +378,8 @@ mod tests {
         let peer = format!("mveth{}b", std::process::id() % 100000);
         nl.veth_create(&name, &peer, None, None).unwrap();
 
-        // moveIntf equivalent: move peer into the holder's netns.
+        // moveIntf equivalent: move peer into the holder's netns (the
+        // handshake above guarantees the holder is already inside it).
         nl.move_to_netns_pid(&peer, holder_pid.as_raw() as u32)
             .expect("move to netns by pid");
         assert!(

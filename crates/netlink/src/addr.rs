@@ -143,52 +143,39 @@ mod tests {
         if !root_tests_enabled() {
             return;
         }
-        use crate::ns::{netns_add, netns_del, setns_name};
+        use crate::ns::{netns_add, netns_del, netns_path, run_in_netns_path};
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
         let ns = format!("mnrt{}", std::process::id());
         let _ = netns_del(&ns);
         netns_add(&ns).unwrap();
 
-        // SAFETY: child changes its own netns, runs netlink ops, then exits
-        // via raw _exit. Run with --test-threads=1 (see ignore message).
-        let child = unsafe { nix::unistd::fork().unwrap() };
-        match child {
-            nix::unistd::ForkResult::Child => {
-                let rc = (|| -> Result<()> {
-                    setns_name(&ns)?;
-                    let nl = Netlink::new()?;
-                    nl.veth_create("va", "vb", None, None)?;
-                    nl.link_set_up("va", true)?;
-                    nl.link_set_up("vb", true)?;
-                    nl.addr_add_ipv4("va", Ipv4Addr::new(10, 0, 0, 1), 24)?;
-                    nl.addr_add_ipv4("vb", Ipv4Addr::new(10, 0, 0, 2), 24)?;
-                    nl.addr_add_ipv6("va", "fd00::1".parse().unwrap(), 64)?;
-                    let addrs = nl.addr_list(Some("va"))?;
-                    assert!(
-                        addrs
-                            .iter()
-                            .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))
-                                && a.prefix_len == 24),
-                        "v4 addr missing in {addrs:?}"
-                    );
-                    assert!(
-                        addrs
-                            .iter()
-                            .any(|a| a.address.is_ipv6() && a.prefix_len == 64),
-                        "v6 addr missing in {addrs:?}"
-                    );
-                    Ok(())
-                })();
-                // SAFETY: raw syscall only.
-                unsafe { libc::_exit(if rc.is_ok() { 0 } else { 1 }) };
+        // run_in_netns_path forks a child that setns'es via a pre-allocated
+        // path and drives a runtime created *before* the fork.
+        let c_path = CString::new(netns_path(&ns).unwrap().as_os_str().as_bytes()).unwrap();
+        run_in_netns_path(&c_path, |nl| {
+            nl.veth_create("va", "vb", None, None)?;
+            nl.link_set_up("va", true)?;
+            nl.link_set_up("vb", true)?;
+            nl.addr_add_ipv4("va", Ipv4Addr::new(10, 0, 0, 1), 24)?;
+            nl.addr_add_ipv4("vb", Ipv4Addr::new(10, 0, 0, 2), 24)?;
+            nl.addr_add_ipv6("va", "fd00::1".parse().unwrap(), 64)?;
+            let addrs = nl.addr_list(Some("va"))?;
+            if !addrs
+                .iter()
+                .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)) && a.prefix_len == 24)
+            {
+                return Err(Error::Other(format!("v4 addr missing in {addrs:?}")));
             }
-            nix::unistd::ForkResult::Parent { child: pid } => {
-                use nix::sys::wait::{waitpid, WaitStatus};
-                match waitpid(pid, None).unwrap() {
-                    WaitStatus::Exited(_, 0) => {}
-                    other => panic!("addr child failed: {other:?}"),
-                }
+            if !addrs
+                .iter()
+                .any(|a| a.address.is_ipv6() && a.prefix_len == 64)
+            {
+                return Err(Error::Other(format!("v6 addr missing in {addrs:?}")));
             }
-        }
+            Ok(())
+        })
+        .expect("addr ops inside netns as root");
         netns_del(&ns).unwrap();
     }
 }

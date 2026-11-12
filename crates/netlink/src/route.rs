@@ -109,53 +109,48 @@ mod tests {
         if !root_tests_enabled() {
             return;
         }
-        use crate::ns::{netns_add, netns_del, setns_name};
+        use crate::ns::{netns_add, netns_del, netns_path, run_in_netns_path};
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
         let ns = format!("mnrt{}", std::process::id());
         let _ = netns_del(&ns);
         netns_add(&ns).unwrap();
 
-        // SAFETY: child changes its own netns, runs netlink ops, exits via
-        // raw _exit. Run with --test-threads=1 (see ignore message).
-        let child = unsafe { nix::unistd::fork().unwrap() };
-        match child {
-            nix::unistd::ForkResult::Child => {
-                let rc = (|| -> Result<()> {
-                    setns_name(&ns)?;
-                    let nl = Netlink::new()?;
-                    nl.veth_create("ra", "rb", None, None)?;
-                    nl.link_set_up("ra", true)?;
-                    nl.link_set_up("rb", true)?;
-                    nl.addr_add_ipv4("ra", Ipv4Addr::new(10, 9, 0, 1), 24)?;
-                    nl.addr_add_ipv6("ra", "fd00::1".parse().unwrap(), 64)?;
-                    let idx = nl.link_index("ra")?.unwrap();
-                    nl.route_add_default_v4(Ipv4Addr::new(10, 9, 0, 254), Some(idx))?;
-                    nl.route_add_default_v6("fd00::fe".parse().unwrap(), Some(idx))?;
-                    // Verify via RTM_GETROUTE dump that both defaults exist.
-                    let routes = nl.route_list()?;
-                    assert!(
-                        routes.iter().any(|r| r.destination_prefix_length == 0
-                            && r.address_family == AddressFamily::Inet
-                            && r.gateway == Some(IpAddr::V4(Ipv4Addr::new(10, 9, 0, 254)))),
-                        "default v4 route missing in {routes:?}"
-                    );
-                    assert!(
-                        routes.iter().any(|r| r.destination_prefix_length == 0
-                            && r.address_family == AddressFamily::Inet6),
-                        "default v6 route missing in {routes:?}"
-                    );
-                    Ok(())
-                })();
-                // SAFETY: raw syscall only.
-                unsafe { libc::_exit(if rc.is_ok() { 0 } else { 1 }) };
+        // run_in_netns_path forks a child that setns'es via a pre-allocated
+        // path and drives a runtime created *before* the fork.
+        let c_path = CString::new(netns_path(&ns).unwrap().as_os_str().as_bytes()).unwrap();
+        run_in_netns_path(&c_path, |nl| {
+            nl.veth_create("ra", "rb", None, None)?;
+            nl.link_set_up("ra", true)?;
+            nl.link_set_up("rb", true)?;
+            nl.addr_add_ipv4("ra", Ipv4Addr::new(10, 9, 0, 1), 24)?;
+            nl.addr_add_ipv6("ra", "fd00::1".parse().unwrap(), 64)?;
+            let idx = nl
+                .link_index("ra")?
+                .ok_or_else(|| crate::Error::Other("no ra in ns".to_string()))?;
+            nl.route_add_default_v4(Ipv4Addr::new(10, 9, 0, 254), Some(idx))?;
+            nl.route_add_default_v6("fd00::fe".parse().unwrap(), Some(idx))?;
+            // Verify via RTM_GETROUTE dump that both defaults exist.
+            let routes = nl.route_list()?;
+            if !routes.iter().any(|r| {
+                r.destination_prefix_length == 0
+                    && r.address_family == AddressFamily::Inet
+                    && r.gateway == Some(IpAddr::V4(Ipv4Addr::new(10, 9, 0, 254)))
+            }) {
+                return Err(crate::Error::Other(format!(
+                    "default v4 route missing in {routes:?}"
+                )));
             }
-            nix::unistd::ForkResult::Parent { child: pid } => {
-                use nix::sys::wait::{waitpid, WaitStatus};
-                match waitpid(pid, None).unwrap() {
-                    WaitStatus::Exited(_, 0) => {}
-                    other => panic!("route child failed: {other:?}"),
-                }
+            if !routes.iter().any(|r| {
+                r.destination_prefix_length == 0 && r.address_family == AddressFamily::Inet6
+            }) {
+                return Err(crate::Error::Other(format!(
+                    "default v6 route missing in {routes:?}"
+                )));
             }
-        }
+            Ok(())
+        })
+        .expect("route ops inside netns as root");
         netns_del(&ns).unwrap();
     }
 }

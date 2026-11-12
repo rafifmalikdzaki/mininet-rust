@@ -58,11 +58,10 @@ impl From<nix::errno::Errno> for Error {
     }
 }
 
-impl From<String> for Error {
-    fn from(msg: String) -> Self {
-        Error::Other(msg)
-    }
-}
+// NOTE: there is deliberately no `impl From<String> for Error` (nor
+// `From<&str>`): an implicit `?`-conversion from any `String` into
+// `Error::Other` hides where operational errors originate. Use
+// `Error::Other(...)` / `Error::InvalidInput(...)` explicitly.
 
 /// Convenient result alias used throughout the crate.
 pub type Result<T> = std::result::Result<T, Error>;

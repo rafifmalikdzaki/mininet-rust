@@ -37,12 +37,14 @@ mod link;
 mod ns;
 mod route;
 
-pub use addr::AddrInfo;
+pub use addr::{validate_prefix_len, AddrInfo};
 pub use error::{Error, Result};
 pub use link::{parse_mac, validate_ifname, LinkInfo, IFNAMSIZ_MAX};
 pub use ns::{
-    netns_add, netns_del, netns_exists, netns_list, netns_list_in, setns_name, setns_pid,
-    NETNS_PATH,
+    assert_single_threaded, check_fork_safety, netns_add, netns_add_in, netns_del, netns_del_in,
+    netns_exists, netns_list, netns_list_in, netns_path, netns_path_in, pipe_pair, run_in_netns,
+    run_in_netns_path, send_ready_byte, setns_name, setns_path_raw, setns_pid, thread_count,
+    validate_netns_name, wait_ready_byte, NETNS_PATH,
 };
 pub use route::RouteInfo;
 
@@ -68,6 +70,18 @@ impl Netlink {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
+        Self::from_runtime(rt)
+    }
+
+    /// Build a handle that takes ownership of an existing current-thread
+    /// runtime.
+    ///
+    /// Fork children must not *create* a tokio runtime after fork(2)
+    /// (allocation while another thread holds the malloc lock can
+    /// deadlock); instead the runtime is created **before** the fork and
+    /// moved into the child, which then only opens the netlink socket on
+    /// it — see [`run_in_netns`].
+    pub fn from_runtime(rt: tokio::runtime::Runtime) -> Result<Self> {
         let handle = rt.block_on(async {
             let (connection, handle, _messages) = rtnetlink::new_connection()?;
             tokio::spawn(connection);
