@@ -12,3 +12,6 @@ doc/html
 doc/latex
 trunk
 
+
+# Rust build artifacts
+/target/
