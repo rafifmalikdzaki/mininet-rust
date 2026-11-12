@@ -687,29 +687,39 @@ mod tests {
         let verifier = unsafe { nix::unistd::fork().unwrap() };
         match verifier {
             nix::unistd::ForkResult::Child => {
-                let rc = (|| -> Result<()> {
-                    setns_name(&ns)?;
-                    let nl = mn_netlink::Netlink::from_runtime(rt_nl)?;
-                    let tc = Tc::from_runtime(rt_tc)?;
-                    let l2 = nl.link_get("h2-eth0")?.expect("h2-eth0 in node ns");
-                    assert!(l2.is_up);
-                    let addrs = nl.addr_list(Some("h2-eth0"))?;
-                    assert!(
-                        addrs
-                            .iter()
-                            .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))
-                                && a.prefix_len == 24),
-                        "addr missing in {addrs:?}"
-                    );
-                    let qdiscs = tc.qdisc_list(&nl, "h2-eth0")?;
-                    assert!(
-                        qdiscs.iter().any(|q| q.kind == "netem"),
-                        "netem qdisc missing in {qdiscs:?}"
-                    );
-                    Ok(())
-                })();
-                // SAFETY: raw syscall only.
-                unsafe { libc::_exit(if rc.is_ok() { 0 } else { 1 }) };
+                // Never unwind in a forked child: a panic would drop the
+                // tokio runtimes post-fork, which can deadlock, leaving the
+                // parent blocked forever in waitpid (observed on CI).
+                // catch_unwind + ManuallyDrop + raw _exit instead.
+                let rc =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
+                        setns_name(&ns)?;
+                        let nl =
+                            std::mem::ManuallyDrop::new(mn_netlink::Netlink::from_runtime(rt_nl)?);
+                        let tc = std::mem::ManuallyDrop::new(Tc::from_runtime(rt_tc)?);
+                        let l2 = nl.link_get("h2-eth0")?.expect("h2-eth0 in node ns");
+                        assert!(l2.is_up);
+                        let addrs = nl.addr_list(Some("h2-eth0"))?;
+                        assert!(
+                            addrs
+                                .iter()
+                                .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))
+                                    && a.prefix_len == 24),
+                            "addr missing in {addrs:?}"
+                        );
+                        let qdiscs = tc.qdisc_list(&nl, "h2-eth0")?;
+                        assert!(
+                            qdiscs.iter().any(|q| q.kind == "netem"),
+                            "netem qdisc missing in {qdiscs:?}"
+                        );
+                        Ok(())
+                    }));
+                let code = match rc {
+                    Ok(Ok(())) => 0,
+                    _ => 1,
+                };
+                // SAFETY: raw syscall only; never returns, so no unwinding.
+                unsafe { libc::_exit(code) };
             }
             nix::unistd::ForkResult::Parent { child } => {
                 use nix::sys::wait::{waitpid, WaitStatus};

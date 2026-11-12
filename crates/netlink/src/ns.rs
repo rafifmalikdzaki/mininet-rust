@@ -405,13 +405,20 @@ where
     let child = unsafe { nix::unistd::fork()? };
     match child {
         nix::unistd::ForkResult::Child => {
-            let rc = (|| -> Result<i32> {
+            // Never unwind in the forked child: a panic in `f` would drop
+            // the runtime post-fork (deadlock risk) and leave the parent
+            // blocked in waitpid. Catch, then raw _exit; ManuallyDrop keeps
+            // the runtime from being dropped during unwinding.
+            let rc = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<i32> {
                 setns_path_raw(path)?;
-                let nl = Netlink::from_runtime(rt)?;
+                let nl = std::mem::ManuallyDrop::new(Netlink::from_runtime(rt)?);
                 f(&nl)?;
                 Ok(0)
-            })();
-            let code = rc.unwrap_or(1);
+            }));
+            let code = match rc {
+                Ok(Ok(c)) => c,
+                _ => 1,
+            };
             // SAFETY: raw syscall only.
             unsafe { libc::_exit(code) }
         }
