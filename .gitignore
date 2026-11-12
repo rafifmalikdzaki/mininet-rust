@@ -15,3 +15,4 @@ trunk
 
 # Rust build artifacts
 /target/
+!/apps/mnexec/

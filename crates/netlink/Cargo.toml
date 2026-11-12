@@ -1,0 +1,15 @@
+[package]
+name = "mn-netlink"
+version = "0.1.0"
+description = "Safe rtnetlink wrappers: netns, veth links, addresses, routes (kernel-facing core of the Rust mininet)"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rtnetlink.workspace = true
+netlink-packet-route.workspace = true
+netlink-packet-core.workspace = true
+nix.workspace = true
+libc.workspace = true
+tokio.workspace = true
+futures.workspace = true
