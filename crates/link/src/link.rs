@@ -693,8 +693,8 @@ mod tests {
                 // catch_unwind + ManuallyDrop + raw _exit instead.
                 // Each check maps to a distinct exit code so the parent's
                 // "verifier child failed: Exited(_, N)" says which step failed.
-                let rc =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<u8, u8> {
+                let rc = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                    || -> std::result::Result<u8, u8> {
                         setns_name(&ns).map_err(|_| 2)?;
                         let nl = std::mem::ManuallyDrop::new(
                             mn_netlink::Netlink::from_runtime(rt_nl).map_err(|_| 3)?,
@@ -717,14 +717,15 @@ mod tests {
                             return Err(11);
                         }
                         Ok(0)
-                    }));
+                    },
+                ));
                 let code = match rc {
                     Ok(Ok(c)) => c,
                     Ok(Err(c)) => c,
                     Err(_) => 12,
                 };
                 // SAFETY: raw syscall only; never returns, so no unwinding.
-                unsafe { libc::_exit(code) };
+                unsafe { libc::_exit(code as i32) };
             }
             nix::unistd::ForkResult::Parent { child } => {
                 use nix::sys::wait::{waitpid, WaitStatus};
