@@ -261,7 +261,8 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   gate; dry-run must have zero side effects by construction.
 - **Follow-up (same PR run):** privileged container lacked curl (rust-toolchain
   step failed) -> apt step moved first and installs curl/ca-certificates;
-  `versioncheck.py` flagged "Mininet +" strings in docs/scripts -> reworded;
+  `versioncheck.py` flagged non-version "Mininet <symbol>" matches in
+  docs/scripts -> reworded;
   ubuntu-24.04 removed the apt `pep8` package -> install.sh now installs
   `python3-pycodestyle` there. Result: rust-ci green on the PR.
 - **Verified:** actionlint clean on all 4 workflows; `cargo test --workspace`

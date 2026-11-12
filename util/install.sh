@@ -219,7 +219,10 @@ function mn_deps {
     fi
 
     echo "Installing Mininet core"
-    pushd $MININET_DIR/mininet
+    # MININET_DIR is the repo root (see above); the root Makefile owns the
+    # 'install' target. (Upstream's $MININET_DIR/mininet only worked because
+    # the checkout dir is conventionally named "mininet".)
+    pushd $MININET_DIR
     sudo PYTHON=${PYTHON} make install
     popd
 }

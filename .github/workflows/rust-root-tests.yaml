@@ -46,7 +46,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             ca-certificates curl \
             python3 iproute2 net-tools bridge-utils ethtool \
-            openvswitch-switch gcc make
+            openvswitch-switch gcc make libc6-dev
           python3 --version
 
       - uses: dtolnay/rust-toolchain@stable
