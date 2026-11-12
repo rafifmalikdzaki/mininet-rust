@@ -40,12 +40,24 @@ jobs:
           $sudo mn --switch ovs,protocols=OpenFlow13 --test pingall
       - name: Install test dependencies
         run: |
-          sudo apt-get install -qq vlan
+          sudo apt-get install -qq vlan tshark openvswitch-testcontroller
           export PYTHON=${{ matrix.py }}
           sudo $PYTHON -m pip install pexpect
           # NB: no `util/install.sh -fw` here — the -f (OpenFlow reference
           # switch) path patches mininet/util/openflow-patches/controller.patch,
-          # which does not exist in this tree; tests use OVS, not the ofsoftswitch.
+          # which does not exist in this tree (nor upstream anymore). The tests
+          # only need a `controller` executable on PATH; shim it with OVS's
+          # ovs-testcontroller (mininet runs `controller [-v] ptcp:6653`).
+          if ! which controller >/dev/null 2>&1; then
+            sudo tee /usr/local/bin/controller >/dev/null <<'SHIM'
+          #!/bin/sh
+          args=""
+          for a in "$@"; do [ "$a" = "-v" ] && continue; args="$args $a"; done
+          exec ovs-testcontroller $args
+          SHIM
+            sudo chmod +x /usr/local/bin/controller
+          fi
+          which controller
       - name: Run core tests
         run: |
           export sudo="sudo env PATH=$PATH"

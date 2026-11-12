@@ -63,11 +63,16 @@ jobs:
           install -D mnexec /usr/local/bin/mnexec
           which mnexec && mnexec 2>&1 | head -n 1 || true
 
-      # No systemd inside the container: start the OVS daemons by hand so
+      # No systemd inside the container: create the OVS db by hand (the deb
+      # postinst normally does this) and start the daemons manually so
       # ovs-vsctl (OVSSwitch default) works.
       - name: Start Open vSwitch daemons (container has no systemd)
         run: |
-          mkdir -p /var/run/openvswitch /var/log/openvswitch
+          mkdir -p /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
+          if [ ! -f /etc/openvswitch/conf.db ]; then
+            ovsdb-tool create /etc/openvswitch/conf.db \
+              /usr/share/openvswitch/vswitch.ovsschema
+          fi
           if ! ovs-vsctl show >/dev/null 2>&1; then
             ovsdb-server --remote=punix:/var/run/openvswitch/db.sock \
               --pidfile=/var/run/openvswitch/ovsdb-server.pid --detach \
