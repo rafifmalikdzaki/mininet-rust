@@ -18,19 +18,19 @@ reviewed, gate-green work, atomic per category, no AI attribution.
 - [x] design nits sweep (aafe084)
 
 ## In flight
-- [ ] T8b Switch/Controller port (agent switch-ctrl) - crates/node only
-- [ ] T9 mn-net orchestrator + dry-run --dump (agent net-orch) - crates/net + root Cargo.toml
+- [ ] T10d remaining cli.py commands + term.py xterms (agent repl-polish) - apps/mn only
+- [ ] T12 privileged CI + RUST.md/BENCHMARKS.md (agent ci-docs)
 
 ## Queued
-- [ ] T10b wire mn -> mn-net: --topo/--dump/--test, non-root dry-run path
-- [ ] T10c repl.rs interactive loop: nodes/links/dump/net/ports/hosts/switches/controllers/ping/pingall/iperf/dpctl/route/xterm/exit (2-3 cmds per commit, golden tests)
-- [ ] T10d parity polish (sh passthrough, intfs, py escape optional)
-- [ ] nodelib: LinuxBridge, NAT, CPULimitedHost cgroups
+- [x] T10b wire mn -> mn-net (5adb7e0): --topo/--dump/--test, non-root dry-run path
+- [x] T10c repl.rs interactive loop (ed56dbc): nodes/links/dump/net/ports/hosts/switches/controllers/ping/pingall/iperf/dpctl/route/xterm/exit (2-3 cmds per commit, golden tests)
+- [ ] T10d parity polish (agent repl-polish) (sh passthrough, intfs, py escape optional)
+- [x] nodelib: LinuxBridge/NAT/CPULimitedHost (2539eaa)
 - [ ] T11 full run on privileged host/CI (root-gated suites + diff_topology.sh)
-- [ ] T12 docs ledger PROGRESS/DECISIONS/BENCHMARKS, README, privileged CI job, PR to master
+- [ ] T12 CI/docs (agent ci-docs): privileged workflow, RUST.md, BENCHMARKS.md PROGRESS/DECISIONS/BENCHMARKS, README, privileged CI job, PR to master
 - [ ] scope decision: miniedit/consoles/cluster/mobility out of v1 (DECISIONS.md)
 
 ## Checkpoint: current
 - [x] fmt/clippy -D warnings/test green: 207 passed, 0 failed, 14 root-gated ignored
 - [x] PE re-review APPROVE on mn-node; 10/10 issues fixed
-- [x] working tree clean, Python tree untouched
+- [x] working tree clean, Python tree untouched, 345 passed / 0 failed / 24 root-gated ignored

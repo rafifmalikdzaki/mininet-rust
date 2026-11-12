@@ -32,6 +32,16 @@ all green — **207 passed / 0 failed / 14 ignored** (ignored = root-gated
   parsers, visibility leaks, oversized fns) — all applied or consciously skipped
   with reasons; behavior proven unchanged by differential tests.
 
+## Recent commits
+| 3459e45 | mn-net orchestrator + dry-run (Task 9) |
+| e3d6dde | Switch/Controller port (Task 8b) |
+| 5adb7e0 | mn wired to mn-net, --dump/--test/--clean (Task 10b) |
+| 2539eaa | nodelib: LinuxBridge/NAT/CPULimitedHost |
+| ed56dbc | cli.py interactive loop port (Task 10c) |
+| 5908e6e | lxbr seam + netlink upstreaming + cleanups |
+
+Gates now: 345 passed / 0 failed / 24 ignored (root-gated).
+
 ## In flight
 - Task 8b: Switch/Controller real ports (agents: switch-ctrl) — crates/node only.
 - Task 9: mn-net orchestrator + non-root dry-run `--dump` (agent: net-orch) —
