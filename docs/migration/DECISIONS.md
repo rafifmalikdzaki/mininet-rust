@@ -278,3 +278,49 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
 - **Verified:** actionlint clean on all 4 workflows; `cargo test --workspace`
   421 passed / 0 failed / 29 ignored with a CI-like PATH (no ovs-vsctl,
   no mnexec); pyflakes + pep8 clean on PYSRC locally.
+
+## D23 — qdiscs do not survive a netns move; attach order is create → move → configure-in-ns
+
+- **Found by:** the first privileged CI run that got past the fork-safety fixes
+  (`rust-root-tests` on 07481ab): the `tc_link_lifecycle_across_netns`
+  verifier child exited with code **11 = "no netem qdisc on the moved end
+  h2-eth0"**.
+- **Root cause:** the kernel drops IFF_UP, addresses **and qdiscs** when a
+  veth end is moved into another netns (verified empirically with iproute2
+  in a privileged container: netem installed pre-move is gone post-move).
+  The previous attach order (create → install qdiscs → move → up/addr)
+  therefore left the moved end without its qdisc. Python mininet configures
+  the interface *inside* the node after `moveIntf`, which is why the legacy
+  order works there.
+- **Fix:** `Link::attach` is now `veth_create_replacing` → `move_ends` →
+  `configure_ends`, where each end is configured **in its own namespace**
+  (qdisc + up + addr) — locally for root-ns ends, via
+  `mn_netlink::run_in_netns(pid, ...)` for namespaced nodes. To make that
+  possible, `Tc` was refactored from a runtime-owning struct into a
+  zero-sized unit that rides on the shared `&Netlink`
+  (`Netlink::run_fut`/`Netlink::handle()` are now public; `Tc::from_runtime`
+  is gone, so the forked verifier child needs only the one pre-fork
+  runtime). Verified in a privileged container: both
+  `tc_link_lifecycle_across_netns` and `netem_qdisc_add_and_del_on_veth`
+  pass (locally with a temporary fq swap because the sandbox host kernel
+  lacks sch_netem; the real netem path is what CI's ubuntu-24.04 kernel
+  runs).
+- **Latent root-test bugs fixed in the same pass** (they had never run on
+  CI because the suite always stopped at mn-link):
+  - `veth_pair_lifecycle` / `move_intf_to_netns_by_pid`: deleting one veth
+    end removes the pair, so the second `link_delete` must be best-effort;
+    and a netdev can only be moved *out of* the ns it currently lives in,
+    so "move back" must be requested from inside the holder's ns
+    (`run_in_netns(holder, |nl| nl.move_to_netns_pid(peer, self_pid))`).
+  - `root_two_hosts_link_pingall_stop`: pingAll over 2 hosts is
+    "2/2 received", not "1/1".
+  - `cpu_limited_host_cgroup_v2_root`: skip (not fail) when cgroup v2 is
+    absent or read-only, as in some containers.
+  - The `LinkConfig` doc example was ```ignore``` — but
+    `cargo test -- --ignored` (used by the root-test script) *runs*
+    ignored doctests, and it did not compile (E0433). It is now a real
+    compiling doctest.
+- **CI workflow:** rust-root-tests.yaml now also installs `iputils-ping`
+  (ping tests) and `openvswitch-testcontroller` + a `controller` shim
+  (default controller c0, same shim as run-tests.yaml), and remounts
+  cgroup2 rw when possible.
