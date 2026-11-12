@@ -33,9 +33,9 @@ is (a) a few surface gaps, (b) Python-facing bindings, (c) examples/testbed,
 | Gap | Severity | Notes |
 |---|---|---|
 | Root-gated suites (29 tests) never executed on a privileged host yet | HIGH | `rust-root-tests.yaml` exists; needs one real CI run |
-| `--nat` / `addNAT` not wired into `mnr` runner yet (external connections) | HIGH | NAT class ported in `nodelib.rs`; runner returns "not ported" |
-| No Python bindings — Rust core not reachable from Python code | MED | PyO3/maturin crate planned (Phase A) |
-| `examples/` still Python-only | MED | port key examples via bindings + cybersec testbed |
+| `--nat` / `addNAT` wiring | HIGH | **done** (`8090dcc`): add_nat + config_nats + dry-run test |
+| Python bindings | MED | **done**: `bindings/python` (mininet_rust, PyO3), pytest smoke tests green |
+| Rust-backed examples | MED | **done**: `examples/rust/` (emptynet, external_nat, cybersec_testbed, simpleperf) |
 | HTB `bw=` via netlink is TODO (netem rate interim) | LOW | needs privileged verification |
 | NOX/Ryu controller runtimes are stubs | LOW | out of v1 (D17) |
 | miniedit GUI, cluster, mobility, `--innamespace`, `--custom` | LOW | out of v1 (D17) |

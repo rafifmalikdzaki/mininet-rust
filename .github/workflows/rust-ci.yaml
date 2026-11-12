@@ -22,3 +22,7 @@ jobs:
         run: cargo test --workspace
       - name: Release build
         run: cargo build --workspace --release
+      - name: Build Python bindings (maturin)
+        run: |
+          python3 -m pip install maturin
+          maturin build -m bindings/python/Cargo.toml --release

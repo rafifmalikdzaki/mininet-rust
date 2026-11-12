@@ -65,6 +65,7 @@ Highlights:
 - **`mnr-mcp`** — [MCP](https://modelcontextprotocol.io/) server exposing
   `topo_plan`, `graph`, `net_start/stop`, `pingall`, `host_cmd`, … to any
   AI tool: `vibe mcp add mnr-mcp --transport stdio --command "$PWD/target/release/mnr-mcp"`.
+- **Python bindings** (`mininet_rust`, PyO3) for easy coding against the Rust core, plus Rust-backed labs in `examples/rust/` (external NAT, cybersec testbed).
 - Full decision log, architecture map, and progress ledger in
   [`docs/migration/`](docs/migration/PROGRESS.md).
 

@@ -138,3 +138,12 @@ TODO / out of v1 scope (D17):
   --ignored --test-threads=1`, then `sh scripts/run_root_tests.sh` (which
   also runs the Python-vs-Rust `diff_topology.sh` harness for `single,3
   linear,4 tree,2,2`). `allow-failure: false`.
+
+## Python bindings & examples
+
+The Rust core is also exposed to Python as `mininet_rust` (PyO3/maturin,
+`bindings/python`): `maturin develop -m bindings/python/Cargo.toml`, then
+`import mininet_rust as mnr; net = mnr.Mininet(topo="tree,2,2")`. Rust-backed
+examples in `examples/rust/` — including `external_nat.py` (external
+connections) and `cybersec_testbed.py` (cybersecurity testbed, `--plan` for a
+no-root preview).

@@ -22,6 +22,7 @@ machine. Create a sample two-host, one-switch network with:
    architecture
    testing
    migration
+   bindings
    python-api
 
 .. toctree::

@@ -68,3 +68,12 @@ What is ported
 Known TODOs: HTB bandwidth shaping via netlink (bw currently maps to netem
 rate), NOX/Ryu controller runtimes, miniedit GUI, cluster/mobility. See
 ``docs/migration/DECISIONS.md`` (D17).
+
+Python bindings & labs
+----------------------
+
+``bindings/python`` (PyO3 + maturin) exposes the Rust core to Python as
+``mininet_rust`` — see :doc:`bindings`. Rust-backed examples live in
+``examples/rust/``, including ``external_nat.py`` (external connections via
+the NAT) and ``cybersec_testbed.py`` (cybersecurity testbed:
+attacker/victims/defender + NAT egress; ``--plan`` works without root).
