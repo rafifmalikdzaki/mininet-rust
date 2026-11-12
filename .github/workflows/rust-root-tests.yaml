@@ -37,19 +37,21 @@ jobs:
       # Host deps for BOTH sides, installed FIRST: the bare ubuntu:24.04
       # container has no curl/ca-certificates, which dtolnay/rust-toolchain
       # needs to fetch rustup. apt only — nothing is pip-installed.
-      # Python reference side needs: python3, ip (iproute2), ifconfig
-      # (net-tools), mnexec (built below from mnexec.c), ovs-vsctl
-      # (openvswitch-switch, default switch class OVSSwitch), brctl
-      # (bridge-utils), ethtool (link status), iptables (NAT tests).
-      # Rust side needs cargo only (plus iptables for the NAT root test).
+      # Python reference side needs: python3 + python3-packaging (mininet
+      # util.py prefers packaging.version; 24.04's python3.12 has no
+      # distutils), ip (iproute2), ifconfig (net-tools), mnexec (built below
+      # from mnexec.c), ovs-vsctl (openvswitch-switch, default switch class
+      # OVSSwitch), brctl (bridge-utils), ethtool (link status), iptables
+      # (NAT tests). Rust side needs cargo only (plus iptables for the NAT
+      # root test).
       - name: Install host dependencies (apt only, no pip)
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             ca-certificates curl \
-            python3 iproute2 net-tools bridge-utils ethtool iptables \
-            iputils-ping openvswitch-switch openvswitch-testcontroller \
-            gcc make libc6-dev
+            python3 python3-packaging iproute2 net-tools bridge-utils \
+            ethtool iptables iputils-ping openvswitch-switch \
+            openvswitch-testcontroller gcc make libc6-dev
           python3 --version
 
       # mininet runs `controller [-v] ptcp:6653` for the default controller;
