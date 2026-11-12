@@ -17,7 +17,10 @@ jobs:
   root-tests:
     name: Root-gated tests + Python-vs-Rust diff (privileged container)
     runs-on: ubuntu-latest
-    allow-failure: false
+    # NB: `allow-failure` is only valid inside strategy.matrix, not at job
+    # level — an invalid key makes GitHub reject the whole workflow file and
+    # the run fails in 0s with zero jobs. (continue-on-error is the job-level
+    # key; false is the default, so it is simply omitted.)
     container:
       image: ubuntu:24.04
       options: --privileged   # netns + CAP_NET_ADMIN; container jobs run as root
