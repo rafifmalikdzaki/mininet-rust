@@ -479,6 +479,9 @@ mod tests {
         );
 
         nl.link_delete(&a).unwrap();
-        nl.link_delete(&b).unwrap();
+        // Deleting one veth end removes the whole pair, so b is already
+        // gone — the second delete must be best-effort (Python's
+        // Link.delete is likewise a no-op for a missing interface).
+        let _ = nl.link_delete(&b);
     }
 }

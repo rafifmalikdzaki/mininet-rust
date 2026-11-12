@@ -691,32 +691,37 @@ mod tests {
                 // tokio runtimes post-fork, which can deadlock, leaving the
                 // parent blocked forever in waitpid (observed on CI).
                 // catch_unwind + ManuallyDrop + raw _exit instead.
+                // Each check maps to a distinct exit code so the parent's
+                // "verifier child failed: Exited(_, N)" says which step failed.
                 let rc =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<()> {
-                        setns_name(&ns)?;
-                        let nl =
-                            std::mem::ManuallyDrop::new(mn_netlink::Netlink::from_runtime(rt_nl)?);
-                        let tc = std::mem::ManuallyDrop::new(Tc::from_runtime(rt_tc)?);
-                        let l2 = nl.link_get("h2-eth0")?.expect("h2-eth0 in node ns");
-                        assert!(l2.is_up);
-                        let addrs = nl.addr_list(Some("h2-eth0"))?;
-                        assert!(
-                            addrs
-                                .iter()
-                                .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))
-                                    && a.prefix_len == 24),
-                            "addr missing in {addrs:?}"
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<u8, u8> {
+                        setns_name(&ns).map_err(|_| 2)?;
+                        let nl = std::mem::ManuallyDrop::new(
+                            mn_netlink::Netlink::from_runtime(rt_nl).map_err(|_| 3)?,
                         );
-                        let qdiscs = tc.qdisc_list(&nl, "h2-eth0")?;
-                        assert!(
-                            qdiscs.iter().any(|q| q.kind == "netem"),
-                            "netem qdisc missing in {qdiscs:?}"
-                        );
-                        Ok(())
+                        let tc =
+                            std::mem::ManuallyDrop::new(Tc::from_runtime(rt_tc).map_err(|_| 4)?);
+                        let l2 = nl.link_get("h2-eth0").map_err(|_| 5)?.ok_or(6)?;
+                        if !l2.is_up {
+                            return Err(7);
+                        }
+                        let addrs = nl.addr_list(Some("h2-eth0")).map_err(|_| 8)?;
+                        if !addrs.iter().any(|a| {
+                            a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2))
+                                && a.prefix_len == 24
+                        }) {
+                            return Err(9);
+                        }
+                        let qdiscs = tc.qdisc_list(&nl, "h2-eth0").map_err(|_| 10)?;
+                        if !qdiscs.iter().any(|q| q.kind == "netem") {
+                            return Err(11);
+                        }
+                        Ok(0)
                     }));
                 let code = match rc {
-                    Ok(Ok(())) => 0,
-                    _ => 1,
+                    Ok(Ok(c)) => c,
+                    Ok(Err(c)) => c,
+                    Err(_) => 12,
                 };
                 // SAFETY: raw syscall only; never returns, so no unwinding.
                 unsafe { libc::_exit(code) };
