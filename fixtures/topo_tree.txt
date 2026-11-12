@@ -1,0 +1,26 @@
+buildTopo arg: tree,2,2
+topo class: TreeTopo
+nodes(): ['h1', 'h2', 'h3', 'h4', 's1', 's2', 's3']
+hosts(): ['h1', 'h2', 'h3', 'h4']
+switches(): ['s1', 's2', 's3']
+nodeInfo(h1): {}
+nodeInfo(h2): {}
+nodeInfo(h3): {}
+nodeInfo(h4): {}
+nodeInfo(s1): {'isSwitch': True}
+nodeInfo(s2): {'isSwitch': True}
+nodeInfo(s3): {'isSwitch': True}
+links(sort=True, withKeys=True, withInfo=True):
+   ('s1', 's2', 1, {'node1': 's1', 'node2': 's2', 'port1': 1, 'port2': 3})
+   ('s1', 's3', 1, {'node1': 's1', 'node2': 's3', 'port1': 2, 'port2': 3})
+   ('s2', 'h1', 1, {'node1': 's2', 'node2': 'h1', 'port1': 1, 'port2': 0})
+   ('s2', 'h2', 1, {'node1': 's2', 'node2': 'h2', 'port1': 2, 'port2': 0})
+   ('s3', 'h3', 1, {'node1': 's3', 'node2': 'h3', 'port1': 1, 'port2': 0})
+   ('s3', 'h4', 1, {'node1': 's3', 'node2': 'h4', 'port1': 2, 'port2': 0})
+ports: {'s2': {1: ('h1', 0), 2: ('h2', 0), 3: ('s1', 1)}, 'h1': {0: ('s2', 1)}, 'h2': {0: ('s2', 2)}, 's1': {1: ('s2', 3), 2: ('s3', 3)}, 's3': {1: ('h3', 0), 2: ('h4', 0), 3: ('s1', 2)}, 'h3': {0: ('s3', 1)}, 'h4': {0: ('s3', 2)}}
+port(s1, s2): (1, 3)
+port(s1, s3): (2, 3)
+port(s2, h1): (1, 0)
+port(s2, h2): (2, 0)
+port(s3, h3): (1, 0)
+port(s3, h4): (2, 0)

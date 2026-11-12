@@ -1,0 +1,63 @@
+== macColonHex ==
+macColonHex(0x0) = 00:00:00:00:00:00
+macColonHex(0x1) = 00:00:00:00:00:01
+macColonHex(0xffffffffffff) = ff:ff:ff:ff:ff:ff
+macColonHex(0x102030405) = 00:01:02:03:04:05
+macColonHex(0xa00000001) = 00:0a:00:00:00:01
+macColonHex(0xdeadbeef1234) = de:ad:be:ef:12:34
+== ipStr / ipNum ==
+ipStr(0x0) = 0.0.0.0 ; ipNum(0.0.0.0) = 0x0
+ipStr(0xa000001) = 10.0.0.1 ; ipNum(10.0.0.1) = 0xa000001
+ipStr(0xa000000) = 10.0.0.0 ; ipNum(10.0.0.0) = 0xa000000
+ipStr(0xffffffff) = 255.255.255.255 ; ipNum(255.255.255.255) = 0xffffffff
+ipStr(0xc0a80001) = 192.168.0.1 ; ipNum(192.168.0.1) = 0xc0a80001
+== ipAdd ==
+ipAdd(1) = 10.0.0.1
+ipAdd(2) = 10.0.0.2
+ipAdd(255) = 10.0.0.255
+ipAdd(1, prefixLen=16) = 10.0.0.1
+ipAdd(65535, prefixLen=16) = 10.0.255.255
+ipAdd(1, prefixLen=24, ipBaseNum=0xc0a80000) = 192.168.0.1
+== ipParse ==
+ipParse('10.0.0.1') = 0xa000001
+ipParse('10.1') = 0xa000001
+ipParse('127.0.0.1') = 0x7f000001
+ipParse('192.168.1.100') = 0xc0a80164
+ipParse('0.0.0.0') = 0x0
+ipParse('255.255.255.255') = 0xffffffff
+== netParse ==
+netParse('10.0.0.0/8') = (0xa000000, 8)
+netParse('192.168.0.0/16') = (0xc0a80000, 16)
+netParse('10.1.2.3') = (0xa010203, 24)
+netParse('172.16.5.0/12') = (0xac100500, 12)
+== natural sort ==
+input: ['h10', 'h2', 'h1', 's10', 's2', 's1', 'h1-eth10', 'h1-eth2', 'c0', '10.0.0.2', '10.0.0.10']
+sorted(key=natural): ['10.0.0.2', '10.0.0.10', 'c0', 'h1', 'h1-eth2', 'h1-eth10', 'h2', 'h10', 's1', 's2', 's10']
+pairs sorted by naturalSeq: [('h1', 's1'), ('h2', 's1'), ('h10', 's1'), ('s2', 'h10')]
+== splitArgs ==
+splitArgs('single,3') = ('single', [3], {})
+splitArgs('linear,4') = ('linear', [4], {})
+splitArgs('tree,2,2') = ('tree', [2, 2], {})
+splitArgs('ovs,protocols=OpenFlow13') = ('ovs', [], {'protocols': 'OpenFlow13'})
+splitArgs('tc,bw=10,delay=5ms,loss=0.1') = ('tc', [], {'bw': 10, 'delay': '5ms', 'loss': 0.1})
+splitArgs('none') = ('none', [], {})
+splitArgs('rt,sched=rt,cores=0-1') = ('rt', [], {'sched': 'rt', 'cores': '0-1'})
+== makeNumeric ==
+makeNumeric: [('10', 10, 'int'), ('0.5', 0.5, 'float'), ('5ms', '5ms', 'str'), ('abc', 'abc', 'str'), ('-3', -3, 'int')]
+== unitScale / fmtBps ==
+fmtBps(0) = 0.0 bits/sec
+fmtBps(999) = 999.0 bits/sec
+fmtBps(1000) = 1.0 kbits/sec
+fmtBps(999999) = 1000.0 kbits/sec
+fmtBps(1000000) = 1.0 Mbits/sec
+fmtBps(150000000.0) = 150.0 Mbits/sec
+fmtBps(1000000000) = 1.0 Gbits/sec
+fmtBps(2500000000.0) = 2.5 Gbits/sec
+fmtBps(1000000000000) = 1.0 Tbits/sec
+fmtBps(10**9, prefix="M") = 1000.0 Mbits/sec
+unitScale(500) = ('', 1.0)
+unitScale(10**9) = ('G', 1000000000.0)
+unitScale(2500, prefix="k") = ('k', 1000.0)
+== irange ==
+list(irange(1, 5)) = [1, 2, 3, 4, 5]
+list(irange(3, 3)) = [3]
