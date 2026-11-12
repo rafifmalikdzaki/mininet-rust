@@ -53,10 +53,13 @@ jobs:
         # rust-toolchain.toml pins channel = "stable"; Cargo.lock is committed.
 
       # Python mininet pathCheck()s 'mnexec' and 'ifconfig' at Host setup;
-      # build the C helper from the repo and put it on PATH.
+      # build the C helper from the repo and put it on PATH. Compiled directly
+      # (not via `make mnexec`) because the Makefile derives -DVERSION from
+      # `bin/mn --version`, which fails on the container's python3.12
+      # (mininet imports distutils, removed in 3.12).
       - name: Build mnexec and install it on PATH
         run: |
-          make mnexec PYTHON=python3
+          cc -O2 -Wall -DVERSION='"2.3.1b4"' mnexec.c -o mnexec
           install -D mnexec /usr/local/bin/mnexec
           which mnexec && mnexec 2>&1 | head -n 1 || true
 

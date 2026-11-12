@@ -43,7 +43,9 @@ jobs:
           sudo apt-get install -qq vlan
           export PYTHON=${{ matrix.py }}
           sudo $PYTHON -m pip install pexpect
-          util/install.sh -fw
+          # NB: no `util/install.sh -fw` here — the -f (OpenFlow reference
+          # switch) path patches mininet/util/openflow-patches/controller.patch,
+          # which does not exist in this tree; tests use OVS, not the ofsoftswitch.
       - name: Run core tests
         run: |
           export sudo="sudo env PATH=$PATH"
