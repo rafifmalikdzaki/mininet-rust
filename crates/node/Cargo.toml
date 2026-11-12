@@ -1,0 +1,14 @@
+[package]
+name = "mn-node"
+version = "0.1.0"
+description = "Node/Host model ported from mininet/node.py: namespace-backed nodes, mnexec-based command execution, interface configuration on top of mn-netlink/mn-link/mn-util/mn-topo"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-util = { path = "../util" }
+mn-netlink = { path = "../netlink" }
+mn-link = { path = "../link" }
+mn-topo = { path = "../topo" }
+nix.workspace = true
+libc.workspace = true

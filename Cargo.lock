@@ -289,6 +289,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mn-node"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "mn-link",
+ "mn-netlink",
+ "mn-topo",
+ "mn-util",
+ "nix",
+]
+
+[[package]]
 name = "mn-topo"
 version = "0.1.0"
 dependencies = [
