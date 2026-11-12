@@ -250,7 +250,7 @@ impl Tc {
             .into_iter()
             .find(|q| q.parent == TC_H_ROOT && q.handle != 0)
             .map(|q| q.handle)
-            .unwrap_or(0);
+            .unwrap_or(TcHandle::UNSPEC.into());
         let mut msg = TcMessage::with_index(index as i32);
         msg.header.parent = TcHandle::ROOT;
         msg.header.handle = TcHandle::from(handle);
@@ -266,6 +266,12 @@ impl Tc {
             let mut out = Vec::new();
             while let Some(msg) = stream.next().await {
                 let msg = msg.map_err(|e| Error::Tc(e.to_string()))?;
+                // Filter in userspace too: the kernel-side index filter is
+                // not reliably applied by all rtnetlink versions, and an
+                // unfiltered dump would leak other interfaces' qdiscs.
+                if msg.header.index != index as i32 {
+                    continue;
+                }
                 let kind = msg
                     .attributes
                     .iter()

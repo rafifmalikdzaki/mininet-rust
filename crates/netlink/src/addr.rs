@@ -40,8 +40,11 @@ impl Netlink {
         self.run(async {
             let mut req = self.handle.address().get();
             if let Some(name) = ifname {
+                // await the async inner — calling the sync link_index here
+                // would nest run() inside run() and panic in tokio.
                 let idx = self
-                    .link_index(name)?
+                    .link_index_async(name)
+                    .await?
                     .ok_or_else(|| Error::Other(format!("no such interface: {name:?}")))?;
                 req = req.set_link_index_filter(idx);
             }

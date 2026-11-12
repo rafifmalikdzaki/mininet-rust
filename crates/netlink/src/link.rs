@@ -94,14 +94,19 @@ pub fn parse_mac(s: &str) -> Result<[u8; 6]> {
 impl Netlink {
     /// Dump all links (equivalent of `ip link show`). Works unprivileged.
     pub fn link_list(&self) -> Result<Vec<LinkInfo>> {
-        self.run(async {
-            let mut stream = self.handle.link().get().execute();
-            let mut out = Vec::new();
-            while let Some(msg) = stream.next().await {
-                out.push(LinkInfo::from_message(&msg?));
-            }
-            Ok(out)
-        })
+        self.run(self.link_list_async())
+    }
+
+    /// Async inner of [`link_list`](Self::link_list) — await this (never
+    /// `run`) when already inside another `run` future, otherwise tokio
+    /// panics with "cannot start a runtime from within a runtime".
+    pub(crate) async fn link_list_async(&self) -> Result<Vec<LinkInfo>> {
+        let mut stream = self.handle.link().get().execute();
+        let mut out = Vec::new();
+        while let Some(msg) = stream.next().await {
+            out.push(LinkInfo::from_message(&msg?));
+        }
+        Ok(out)
     }
 
     /// Look up the kernel index of interface `name` (`ip link show dev <name>`).
@@ -110,8 +115,14 @@ impl Netlink {
     /// when the device does not exist, so we dump and filter in userspace
     /// instead — `Ok(None)` means "no such interface".
     pub fn link_index(&self, name: &str) -> Result<Option<u32>> {
+        self.run(self.link_index_async(name))
+    }
+
+    /// Async inner of [`link_index`](Self::link_index).
+    pub(crate) async fn link_index_async(&self, name: &str) -> Result<Option<u32>> {
         Ok(self
-            .link_list()?
+            .link_list_async()
+            .await?
             .into_iter()
             .find(|l| l.name == name)
             .map(|l| l.index))
@@ -119,7 +130,16 @@ impl Netlink {
 
     /// Full [`LinkInfo`] for `name`, or `None` if it does not exist.
     pub fn link_get(&self, name: &str) -> Result<Option<LinkInfo>> {
-        Ok(self.link_list()?.into_iter().find(|l| l.name == name))
+        self.run(self.link_get_async(name))
+    }
+
+    /// Async inner of [`link_get`](Self::link_get).
+    pub(crate) async fn link_get_async(&self, name: &str) -> Result<Option<LinkInfo>> {
+        Ok(self
+            .link_list_async()
+            .await?
+            .into_iter()
+            .find(|l| l.name == name))
     }
 
     fn require_index(&self, name: &str) -> Result<u32> {
