@@ -1,36 +1,36 @@
-# Task List: mininet-rust Rust migration
+# Task List: mininet-rust Rust migration (branch rust-migration)
 
-Plan: `tasks/plan.md`. Python tree stays untouched as the differential reference.
+Plan: tasks/plan.md. Python tree untouched = differential reference.
+Workers run on glm-worker (GLM 5.3); reviewers (principal-engineer,
+design-optimizer) on mistral-large-4-high; orchestrator commits only
+reviewed, gate-green work, atomic per category, no AI attribution.
 
-## Phase 0 — Discovery & baseline
-- [ ] Task 1: Write docs/migration/ARCHITECTURE.md (inventory + dependency graph of mininet/*.py, mnexec.c, bin/mn, tests, CI) — S — deps: none
-- [ ] Task 2: Capture behavioral baseline fixtures from Python (test_util.py, topo outputs) into fixtures/ — S — deps: Task 1
+## Done
+- [x] T1 ARCHITECTURE.md + T2 baseline fixtures (57804b2)
+- [x] T3 workspace scaffold + rust-ci (18681cd, f5996fb)
+- [x] T4 mn-util + 5536-case differential (ecf9113)
+- [x] T5 mn-topo + characterization/differential (61c929a)
+- [x] T6a/6b mn-netlink + mnexec (42518a9, 0e6994a)
+- [x] T7 mn-link pure-netlink netem (411e4b5)
+- [x] T8a mn-node Node/Host, PE APPROVE (e5255df)
+- [x] T10a clap args in apps/mn (773e78e)
+- [x] T11-prep diff harness scripts + TESTING.md (a5bbd12)
+- [x] design nits sweep (aafe084)
 
-## Phase 1 — Rust foundation
-- [ ] Task 3: Scaffold Cargo workspace + rust-toolchain + apps/mn stub + Rust CI workflow — M — deps: none
-- [ ] Task 4: Port mininet/util.py pure helpers to crates/util + unit + differential tests — M — deps: Task 3
-- [ ] Task 5: Port mininet/topo.py + topolib.py to crates/topo + characterization tests — M — deps: Task 3, Task 4
+## In flight
+- [ ] T8b Switch/Controller port (agent switch-ctrl) - crates/node only
+- [ ] T9 mn-net orchestrator + dry-run --dump (agent net-orch) - crates/net + root Cargo.toml
 
-## Checkpoint: Foundation
-- [ ] cargo fmt --check / clippy -D warnings / cargo test --workspace pass
-- [ ] Differential parity topo/util vs Python on fixtures
-- [ ] Python tree untouched outside tasks/, crates/, docs/
+## Queued
+- [ ] T10b wire mn -> mn-net: --topo/--dump/--test, non-root dry-run path
+- [ ] T10c repl.rs interactive loop: nodes/links/dump/net/ports/hosts/switches/controllers/ping/pingall/iperf/dpctl/route/xterm/exit (2-3 cmds per commit, golden tests)
+- [ ] T10d parity polish (sh passthrough, intfs, py escape optional)
+- [ ] nodelib: LinuxBridge, NAT, CPULimitedHost cgroups
+- [ ] T11 full run on privileged host/CI (root-gated suites + diff_topology.sh)
+- [ ] T12 docs ledger PROGRESS/DECISIONS/BENCHMARKS, README, privileged CI job, PR to master
+- [ ] scope decision: miniedit/consoles/cluster/mobility out of v1 (DECISIONS.md)
 
-## Phase 2 — Kernel-facing core
-- [ ] Task 6a: crates/netlink namespace + veth + addr/qdisc wrapper (rtnetlink) — M — deps: Task 3
-- [ ] Task 6b: mnexec replacement (setns/exec via nix) — S — deps: Task 6a
-- [ ] Task 7: Port link.py model (Intf/Link/TCLink, netem params) — M — deps: 6a
-- [ ] Task 8a: Port Node/Host core (namespace processes, cmd, intf config) — L — deps: 6a, 6b, 7
-- [ ] Task 8b: Port Switch/Controller shells (OVS stays subprocess-based) — M — deps: 8a
-
-## Phase 3 — Orchestration & CLI
-- [ ] Task 9: Port net.py Mininet orchestrator + root-free dry-run mode — L — deps: 5, 8b
-- [ ] Task 10: Port bin/mn arg parsing + cli.py core interactive loop to apps/mn — M — deps: 9
-- [ ] Task 11: Differential harness Python-vs-Rust (dump/pingall/links on small topos, root host/CI) — M — deps: 9, 10
-
-## Phase 4 — Hardening & docs
-- [ ] Task 12: Rust CI gates, PROGRESS.md ledger, README build/run, DECISIONS.md — S — deps: all above
-
-## Checkpoint: Complete
-- [ ] All workspace gates pass; differential parity demonstrated on root host
-- [ ] docs/migration/ reflects actual code; handoff notes written
+## Checkpoint: current
+- [x] fmt/clippy -D warnings/test green: 207 passed, 0 failed, 14 root-gated ignored
+- [x] PE re-review APPROVE on mn-node; 10/10 issues fixed
+- [x] working tree clean, Python tree untouched

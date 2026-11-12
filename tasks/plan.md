@@ -43,21 +43,21 @@ declarative topo format.
 ## Task List
 
 ### Phase 0 — Discovery & baseline (mostly done, needs recording)
-- [ ] Task 1: Write `docs/migration/ARCHITECTURE.md` — component inventory of
+- [x] Task 1: Write `docs/migration/ARCHITECTURE.md` — component inventory of
   `mininet/*.py`, `mnexec.c`, `bin/mn`, test suite, CI; dependency graph
   (topo ← net ← node/link ← cli). *(discovery, S)*
-- [ ] Task 2: Capture behavioral baseline: run recordable Python tests
+- [x] Task 2: Capture behavioral baseline: run recordable Python tests
   (`mininet/test/test_util.py`, topo construction snippets) and save outputs as
   golden fixtures under `fixtures/`. *(verification, S)*
 
 ### Phase 1 — Rust foundation
-- [ ] Task 3: Scaffold Cargo workspace (`Cargo.toml`, `rust-toolchain.toml`,
+- [x] Task 3: Scaffold Cargo workspace (`Cargo.toml`, `rust-toolchain.toml`,
   crate skeletons, `apps/mn` stub that prints usage), plus CI workflow
   (fmt/check/clippy/test on the workspace). *(implementation, M)*
-- [ ] Task 4: Port `mininet/util.py` pure helpers (irange, natural sort, MAC/IP
+- [x] Task 4: Port `mininet/util.py` pure helpers (irange, natural sort, MAC/IP
   parsing, version parsing) to `crates/util` with unit tests + differential test
   vs Python on generated inputs. *(implementation, M)*
-- [ ] Task 5: Port `mininet/topo.py` (`MultiGraph`, `Topo`, built-in topologies
+- [x] Task 5: Port `mininet/topo.py` (`MultiGraph`, `Topo`, built-in topologies
   from `topolib.py`) to `crates/topo` with characterization tests from Python
   outputs (node/edge counts, port numbering, `build()` results). *(implementation, M)*
 
@@ -67,28 +67,42 @@ declarative topo format.
 - [ ] Python tree untouched (`git status` clean outside `tasks/`, `crates/`, `docs/`)
 
 ### Phase 2 — Kernel-facing core (netlink)
-- [ ] Task 6: `crates/netlink`: namespace create/enter/delete, veth pair
+- [x] Task 6: `crates/netlink`: namespace create/enter/delete, veth pair
   creation, interface up/down, address assignment via rtnetlink; `mnexec`
   replacement binary using `nix::sched::setns` + `execvp`. Unit-testable parts
   only in sandbox; netns paths behind a `root` integration test. *(implementation, L → split: 6a netlink wrapper, 6b mnexec replacement)*
-- [ ] Task 7: Port `mininet/link.py` link model (`Intf`, `Link`, `TCLink` params:
+- [x] Task 7: Port `mininet/link.py` link model (`Intf`, `Link`, `TCLink` params:
   bw/delay/loss/jitter, latency via netem) on top of `crates/netlink`.
   *(implementation, M)*
-- [ ] Task 8: Port `mininet/node.py` `Node`/`Host` core: namespace-backed
+- [~] Task 8: Port `mininet/node.py` `Node`/`Host` core: namespace-backed
   process spawning, cmd execution, interface config — minus OVS specifics.
   *(implementation, L → split: 8a Node/Host, 8b Switch/Controller shells)*
 
 ### Phase 3 — Orchestration & CLI
-- [ ] Task 9: Port `mininet/net.py` `Mininet` orchestrator (addHost/addSwitch/
+- [x] Task 9: Port `mininet/net.py` `Mininet` orchestrator (addHost/addSwitch/
   addLink/start/stop, config ordering) on `crates/topo` + node/link crates,
   with a `--dry-run`/print mode testable without root. *(implementation, L)*
-- [ ] Task 10: Port `bin/mn` CLI argument parsing + `mininet/cli.py` interactive
-  command loop (subset: nodes, links, dump, ping, iperf, exit) to `apps/mn`
-  with clap; differential tests of arg parsing vs `bin/mn --help`/usage.
-  *(implementation, M)*
-- [ ] Task 11: Differential harness: script that builds identical small topos
+- [ ] Task 10 — CLI, in four verified increments (10a done: clap arg parsing):
+  - **10a (done)** `bin/mn` optparse surface → clap in `apps/mn`, golden help +
+    differential option-set vs `python3 bin/mn --help`. Commit `773e78e`.
+  - **10b — wire `mn` to `mn-net`**: `mn --topo single,3` builds the net via
+    mn-net and runs it; `--dump` prints the planned/actual topology in the exact
+    Python `dump`/`links` format (this is what `scripts/diff_topology.sh`
+    probes); `--test pingall|iperf|none` runs the built-in tests. Root-gated
+    end-to-end, but the parse→build→dump path must work non-root (dry-run).
+  - **10c — interactive loop**: port `mininet/cli.py` `CLI` class command set in
+    priority order: `nodes`, `links`, `dump`, `net`, `ports`, `hosts`,
+    `switches`, `controllers`, `ping <a> <b>`/`pingall`/`pingallfull`,
+    `iperf`, `dpctl`, `route`, `xterm`, `exit/quit`, `help`, `source` — each as
+    a small handler fn in `apps/mn/src/repl.rs`, one commit per 2-3 commands,
+    golden-output tests per command against captured Python CLI sessions.
+  - **10d — parity polish**: `sh <cmd>` passthrough, `intfs`, `py` escape (exec
+    python snippet with net in scope — optional, can defer), error messages
+    matching Python CLI. Deferred/out-of-v1: miniedit GUI, consoles, cluster,
+    mobility (recorded in DECISIONS.md).
+- [~] Task 11: Differential harness: script that builds identical small topos
   (single, linear, tree) in Python mininet and Rust mn on a root host and
-  compares `dump`/`pingall`/`links` output. *(verification, M — runs in CI/root only)*
+  compares `dump`/`pingall`/`links` output. *(verification, M — runs in CI/root only; scripts landed in `a5bbd12`, execution pending a privileged host)*
 
 ### Phase 4 — Hardening & docs
 - [ ] Task 12: CI gates for Rust (fmt/clippy/test/nextest, release build),
