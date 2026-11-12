@@ -14,12 +14,14 @@
 //!    (pure model, no kernel) and exit 0**.
 //! 4. Otherwise real start/stop is root-gated (Python's `Mininet.init` →
 //!    `ensureRoot()`): non-root gets a clear error. Root: build → `start()`
-//!    → `--test` tests, or (no `--test`) the interactive loop iff stdin is
-//!    a tty, else dump+links ("dump+stop") → `stop()` → `completed in ...`.
+//!    → `--xterms` spawns the terminals (`mininet/term.py` port,
+//!    [`crate::term::start_terms`], after `start()` because Rust's deferred
+//!    lifecycle starts the shells there — Python spawns them in `build()`
+//!    since its shells already exist) → `--test` tests, or (no `--test`)
+//!    the interactive loop iff stdin is a tty, else dump+links
+//!    ("dump+stop") → `stop()` → `completed in ...`.
 //!
 //! Documented 10b decisions:
-//! - `--xterms` is not ported (`mininet/term.py` TODO): warn and continue
-//!   with the same loop/dump decision.
 //! - `--custom`/`--pre`/`--post`/`--nat`/`--cluster`/`--innamespace` are
 //!   not ported yet: clear error, exit 1 (10c/11 territory).
 //! - Default controller is `DefaultController` (bin/mn's `findController()`
@@ -94,10 +96,14 @@ fn begin(args: &MnArgs, out: &mut dyn Write, stdin_tty: bool, root: bool) -> Res
         let _ = net.stop();
         return Err(format!("could not start network: {e}"));
     }
+    // --xterms: Mininet.startTerms (net.py) — spawn one terminal per
+    // controller/switch/host via the term.py port. Root-gated at runtime
+    // by start() above; with no $DISPLAY it prints term.py's error line.
+    let mut terms: Vec<std::process::Child> = Vec::new();
     if args.xterms {
-        eprintln!(
-            "mn: --xterms is not ported yet (mininet/term.py TODO); continuing without xterms"
-        );
+        let display = std::env::var("DISPLAY").ok();
+        let mut err = std::io::stderr();
+        crate::term::start_terms(&mut net, display.as_deref(), &mut err, &mut terms);
     }
     // bin/mn: if opts.test: runTests(...) else: CLI(mn)
     let run_result: Result<i32, String> = if !args.test.is_empty() {
@@ -105,13 +111,17 @@ fn begin(args: &MnArgs, out: &mut dyn Write, stdin_tty: bool, root: bool) -> Res
     } else if enters_interactive_loop(args, stdin_tty) {
         Ok(crate::repl::run(&mut net, out))
     } else {
-        // 10b decision: no --test and stdin not a tty (or --xterms, which is
-        // unported) -> print dump+links and stop, instead of entering the
-        // interactive loop on a non-tty stdin.
+        // 10b decision: no --test and stdin not a tty -> print dump+links
+        // and stop, instead of entering the interactive loop on a non-tty
+        // stdin.
         dump_and_links(&net, out);
         Ok(0)
     };
     let stop_result = net.stop().map_err(|e| format!("error while stopping: {e}"));
+    if args.xterms {
+        // net.py stop() -> stopXterms(): kill the spawned terms + tunnels.
+        crate::term::stop_xterms(&mut terms);
+    }
     eprintln!(
         "*** completed in {:.3} seconds",
         start.elapsed().as_secs_f64()
@@ -121,10 +131,11 @@ fn begin(args: &MnArgs, out: &mut dyn Write, stdin_tty: bool, root: bool) -> Res
     Ok(0)
 }
 
-/// Whether `mn` enters the interactive loop: no `--test`, no `--xterms`,
-/// and stdin is a tty (10b decision, documented in the module docs).
+/// Whether `mn` enters the interactive loop: no `--test` and stdin is a
+/// tty (bin/mn enters `CLI(mn)` whenever there is no `--test`, with or
+/// without `--xterms`; the 10b non-tty dump+stop deviation is kept).
 pub fn enters_interactive_loop(args: &MnArgs, stdin_tty: bool) -> bool {
-    args.test.is_empty() && !args.xterms && stdin_tty
+    args.test.is_empty() && stdin_tty
 }
 
 /// `--dump`: build the net and print the plan sections; root runs a real
@@ -477,14 +488,15 @@ mod tests {
 
     #[test]
     fn enters_interactive_loop_decision() {
-        // no --test, no --xterms, stdin tty -> loop; otherwise dump+stop
+        // no --test, stdin tty -> loop (bin/mn enters CLI(mn) regardless of
+        // --xterms since 10d); otherwise dump+stop
         assert!(enters_interactive_loop(&args(&["mn"]), true));
+        assert!(enters_interactive_loop(&args(&["mn", "-x"]), true));
         assert!(!enters_interactive_loop(&args(&["mn"]), false));
         assert!(!enters_interactive_loop(
             &args(&["mn", "--test", "none"]),
             true
         ));
-        assert!(!enters_interactive_loop(&args(&["mn", "-x"]), true));
     }
 
     #[test]

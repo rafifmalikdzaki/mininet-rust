@@ -54,10 +54,19 @@ fn session(net: &mut Mininet, script: &str) -> (String, String, i32) {
 }
 
 fn session_tty(net: &mut Mininet, script: &str, tty: bool) -> (String, String, i32) {
+    session_tty_display(net, script, tty, None)
+}
+
+fn session_tty_display(
+    net: &mut Mininet,
+    script: &str,
+    tty: bool,
+    display: Option<&str>,
+) -> (String, String, i32) {
     let mut input = std::io::Cursor::new(script.as_bytes().to_vec());
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let code = repl::run_with_io(net, &mut input, &mut out, &mut err, tty);
+    let code = repl::run_with_io(net, &mut input, &mut out, &mut err, tty, display);
     (
         String::from_utf8(out).expect("out is UTF-8"),
         String::from_utf8(err).expect("err is UTF-8"),
@@ -256,22 +265,25 @@ fn golden_help_topics() {
     );
 }
 
-/// The `xterm`/`gterm` stub: cli.py-exact usage/not-in-network errors, then a
-/// clear not-ported error for valid nodes.
+/// `xterm`/`gterm` with no `$DISPLAY` (task 10d): cli.py-exact
+/// usage/not-in-network errors in arg order, then term.py's
+/// `Error: Cannot connect to display` per valid node (captured from a real
+/// Python CLI session with DISPLAY unset).
 #[test]
-fn golden_xterm_gterm_stub() {
+fn golden_xterm_gterm_no_display() {
     let mut net = single3();
-    let script = "xterm h1 s1\nxterm h1 nope\ngterm\nexit\n";
+    let script = "xterm\nxterm nope\nxterm h1 nope\ngterm h1\nexit\n";
     let (out, err, code) = session(&mut net, script);
     assert_eq!(code, 0);
     assert_eq!(out, "");
     assert_eq!(
         err,
         concat!(
-            "*** xterm: not ported yet (mininet/term.py makeTerms TODO); would spawn xterm for: h1 s1\n",
+            "usage: xterm node1 node2 ...\n",
             "node 'nope' not in network\n",
-            "*** xterm: not ported yet (mininet/term.py makeTerms TODO); would spawn xterm for: h1\n",
-            "usage: gterm node1 node2 ...\n",
+            "Error: Cannot connect to display\n",
+            "node 'nope' not in network\n",
+            "Error: Cannot connect to display\n",
         )
     );
 }

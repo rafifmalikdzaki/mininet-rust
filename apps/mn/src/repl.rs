@@ -22,18 +22,66 @@
 //!   "Documented commands" listing (all 29 `do_*` names of `cli.py`, with
 //!   their docstrings for `help <cmd>`) plus `cli.py`'s `helpStr`.
 //!
-//! Ported commands (handlers below): `help`, `exit`/`quit`/`EOF`, `nodes`,
-//! `net`, `links`, `dump`, `ports`, `intfs`, `pingall`, `pingallfull`,
-//! `pingpair`, `pingpairfull`, `iperf`, `iperfudp`, `dpctl`, `sh`, `source`,
-//! `xterm`/`gterm` (stub: clear not-ported error), plus the 10b convenience
-//! commands `hosts`/`switches`/`controllers`/`ping <a> <b>` (not in stock
-//! `cli.py` — see "Deviations" below). Unknown commands produce Python's
-//! `*** Unknown command: <line>` error line via `default()`.
+//! Ported commands (handlers below): the full `cli.py` command set —
+//! `help`, `exit`/`quit`/`EOF`, `nodes`, `net`, `links`, `dump`, `ports`,
+//! `intfs`, `pingall`, `pingallfull`, `pingpair`, `pingpairfull`, `iperf`,
+//! `iperfudp`, `dpctl`, `sh`, `source`, `link`, `switch`, `wait`, `time`,
+//! `noecho`, `py`, `px`, `x`, `xterm`/`gterm` (real `term.py` spawns via
+//! [`crate::term`]), plus the `default()` node passthrough (`h1 ifconfig`),
+//! plus the 10b convenience commands `hosts`/`switches`/`controllers`/
+//! `ping <a> <b>` (not in stock `cli.py` — see "Deviations" below).
+//! Unknown commands produce Python's `*** Unknown command: <line>` error
+//! line via `default()`.
 //!
-//! Not ported yet (fall through to `*** Unknown command`, task 10d):
-//! `link`, `switch`, `wait`, `time`, `noecho`, `py`, `px`, `x`, and the
-//! `default()` node passthrough (`h1 ifconfig`). They still appear in the
-//! `help` listing because `cli.py` defines them.
+//! Task 10d notes:
+//! - `link` runs `configLinkStatus` in the repl (scope is `apps/mn/**`):
+//!   per connecting link, `ifconfig <intf> <up|down>` via the owning node's
+//!   `cmd()` — exactly what Python's `Intf.ifconfig` does. On a non-started
+//!   node Python's `cmd()` warns `(<node> exited - ignoring cmd(...))`
+//!   (warn level → `out`) and returns None; the same warn line is emitted
+//!   here when `cmd()` fails (documented deviation: Rust reports the error
+//!   object's message only where Python would crash).
+//! - `switch` reproduces cli.py byte-exactly, including its quirk of
+//!   printing `args[1]` (the command, not the switch) in
+//!   `invalid switch: %s`.
+//! - `wait` is `mn.waitConnected()` with `timeout=None` (wait forever);
+//!   its `info`/`warn` chatter goes to real stderr (same convention as
+//!   `*** Starting CLI`), so the golden surface (`out`/`err`) stays empty
+//!   when all switches are already connected (e.g. a switch-less net).
+//! - `time` re-dispatches through `onecmd` semantics (`parseline` *without*
+//!   `precmd`, empty line → `emptyline()` no-op, and the inner stop flag is
+//!   ignored — `time exit` does not exit), then prints
+//!   `*** Elapsed time: %0.6f secs` on `out`.
+//! - `noecho` toggles `stty -echo`/`stty echo` only on a tty, then runs
+//!   `default(line)`.
+//! - `py`/`px` exec the line in a `python3 -c` subprocess with a JSON
+//!   summary of the net in scope (`net` + one name per node — the safe
+//!   subset sanctioned by the task; cli.py's module globals are not
+//!   available). The `py` eval-result printing (`None` → nothing, `str` →
+//!   `result + '\n'`, else `repr(result) + '\n'`) and the
+//!   `output(str(e) + '\n')` exception path are reproduced by the wrapper,
+//!   byte-exact vs the live-captured Python CLI (goldens). The `py`/`px`
+//!   locals dict persists across calls within a session via a pickled
+//!   state file (`px x = 5` then `px print(x)` → `5`, like Python's
+//!   `self.locals`). `Node.cmd()` inside the sandbox runs `mnexec -da <pid>
+//!   sh -c ...` on a started net; on a non-started net it emits Python's
+//!   `(<node> exited - ignoring cmd(...))` warn line and returns None.
+//! - `xterm`/`gterm`/`x` spawn real terminals/tunnels via
+//!   [`crate::term`] (root-gated at runtime: the interactive loop only
+//!   runs on a started, root-owned net). With no `$DISPLAY`, Python prints
+//!   `Error: Cannot connect to display` — reproduced (the resolved display
+//!   is threaded through `run_with_io`'s `display` param so tests are
+//!   deterministic). `x <unknown-node>` crashes Python with `KeyError`;
+//!   here it prints `node '<name>' not in network` (documented deviation).
+//! - The `default()` passthrough substitutes each arg that is a node name
+//!   with its default intf's IP (`updateIP() or arg`; here the model IP —
+//!   on a started net it equals the live IP), splits/joins on single
+//!   spaces like Python's `args.split(' ')`/`' '.join(...)`, then
+//!   `sendCmd(rest)` + `waitForNode` (here `send_cmd` + `wait_output`,
+//!   output on `out`). Interactive key forwarding into a running node
+//!   command (tty-only in Python) is not ported. On a non-started node
+//!   Python's `sendCmd` asserts and crashes the CLI; here the error is
+//!   reported as `*** <node> cmd failed: <err>` on `err` (documented).
 //!
 //! Deviations from CPython (all deliberate, documented):
 //! - Prompt only on tty (see above; CPython prints it always).
@@ -41,9 +89,10 @@
 //!   instead of inheriting the process fds, so scripted-stdin tests can
 //!   capture the output (`subprocess.call(line, shell=True)` blocks either
 //!   way, so non-interactive content is identical).
-//! - `xterm`/`gterm` validate args exactly like `cli.py` (usage line / `node
-//!   'x' not in network`) but then emit a clear not-ported error instead of
-//!   `makeTerms` (task spec: stub for now).
+//! - `xterm`/`gterm`/`x` validate args exactly like `cli.py` (usage line /
+//!   `node 'x' not in network`) and then spawn via `term.rs` on a started
+//!   net; `x <unknown>` reports `node '<name>' not in network` where Python
+//!   crashes with `KeyError`.
 //! - `ping <a> <b>`, `hosts`, `switches`, `controllers` are conveniences not
 //!   present in stock `cli.py` (where they would hit `default()` → `***
 //!   Unknown command`); the task list and the 10b skeleton both define them,
@@ -71,11 +120,31 @@
 //!   no equivalent line — a shell-less net crashes its CLI).
 
 use std::io::{BufRead, IsTerminal, Write};
+use std::path::PathBuf;
+use std::process::Child;
+use std::time::{Duration, Instant};
 
 use mn_net::{Mininet, NetSwitch, NodeRef};
 
+use crate::term;
+
 /// `CLI.prompt` in `mininet/cli.py`.
 pub const PROMPT: &str = "mininet> ";
+
+/// The repl's mutable IO context, threaded through `dispatch`/`default`:
+/// `out`/`err` are the `output()`/`error()` streams, `tty` models
+/// `isatty(stdin)`, `display` is the resolved `$DISPLAY` (None = unset —
+/// threaded explicitly so tests are deterministic), `terms` holds spawned
+/// terminal/tunnel children (Python's `mn.terms`), and `py_state` is the
+/// pickled `py`/`px` locals state file.
+struct Io<'a> {
+    out: &'a mut dyn Write,
+    err: &'a mut dyn Write,
+    tty: bool,
+    display: Option<&'a str>,
+    terms: Vec<Child>,
+    py_state: Option<PathBuf>,
+}
 
 /// Run the interactive loop on the real stdin/stdout until
 /// `exit`/`quit`/EOF. Returns the exit code (0; `bin/mn` stops the net after
@@ -86,38 +155,49 @@ pub fn run(net: &mut Mininet, out: &mut dyn Write) -> i32 {
     eprintln!("*** Starting CLI:");
     let stdin = std::io::stdin();
     let tty = stdin.is_terminal();
+    let display = std::env::var("DISPLAY").ok();
     let mut lock = stdin.lock();
     let mut err = std::io::stderr();
-    run_with_io(net, &mut lock, out, &mut err, tty)
+    run_with_io(net, &mut lock, out, &mut err, tty, display.as_deref())
 }
 
 /// Testable core of [`run`]: read command lines from `stdin`, write
 /// `output()`-level text to `out`, `error()`-level text to `err`, and the
-/// `mininet> ` prompt to `out` only when `tty` is true. Returns 0 when the
-/// loop ends (`exit`/`quit`/`EOF`).
+/// `mininet> ` prompt to `out` only when `tty` is true. `display` is the
+/// resolved `$DISPLAY` for the `xterm`/`x` commands (None = no display).
+/// Returns 0 when the loop ends (`exit`/`quit`/`EOF`).
 pub fn run_with_io(
     net: &mut Mininet,
     stdin: &mut dyn BufRead,
     out: &mut dyn Write,
     err: &mut dyn Write,
     tty: bool,
+    display: Option<&str>,
 ) -> i32 {
+    let mut io = Io {
+        out,
+        err,
+        tty,
+        display,
+        terms: Vec::new(),
+        py_state: None,
+    };
     loop {
-        if tty {
-            let _ = write!(out, "{PROMPT}");
-            let _ = out.flush();
+        if io.tty {
+            let _ = write!(io.out, "{PROMPT}");
+            let _ = io.out.flush();
         }
         let mut buf = String::new();
         match stdin.read_line(&mut buf) {
             Ok(0) => {
                 // EOF: cmdloop maps it to the 'EOF' command -> do_EOF:
                 // output('\n') then exit.
-                let _ = writeln!(out);
+                let _ = writeln!(io.out);
                 break;
             }
             Ok(_) => {}
             Err(_) => {
-                let _ = writeln!(out);
+                let _ = writeln!(io.out);
                 break;
             }
         }
@@ -131,12 +211,15 @@ pub fn run_with_io(
             continue; // emptyline(): don't repeat the last command
         }
         let stop = match cmd.as_deref() {
-            None => default(&line, err),
-            Some(c) => dispatch(net, c, &arg, &line, out, err),
+            None => default(net, &line, &mut io),
+            Some(c) => dispatch(net, c, &arg, &line, &mut io),
         };
         if stop {
             break;
         }
+    }
+    if let Some(state) = io.py_state.take() {
+        let _ = std::fs::remove_file(state);
     }
     0
 }
@@ -190,60 +273,123 @@ fn parseline(line: &str) -> (Option<String>, String, String) {
     )
 }
 
-/// `CLI.default` for unrecognized commands. (The `first in self.mn` node
-/// passthrough of Python's `default()` is task 10d — not ported yet, so it
-/// also lands here.)
-fn default(line: &str, err: &mut dyn Write) -> bool {
-    let _ = writeln!(err, "*** Unknown command: {line}");
+/// `CLI.default`: the node passthrough (`h1 ifconfig`) plus the
+/// `*** Unknown command: <line>` fallthrough. `parseline` is re-applied to
+/// the full line exactly like `cmd.Cmd.onecmd` → `default(line)`.
+fn default(net: &mut Mininet, line: &str, io: &mut Io) -> bool {
+    let (first, args, _line) = parseline(line);
+    if let Some(first) = first {
+        if net.contains(&first) {
+            if args.is_empty() {
+                let _ = writeln!(io.err, "*** Please enter a command for node: {first} <cmd>");
+                return false;
+            }
+            // Substitute IP addresses for node names in the rest of the
+            // command: Python splits/joins on single spaces and uses
+            // `self.mn[arg].defaultIntf().updateIP() or arg` per token.
+            let rest: Vec<String> = args
+                .split(' ')
+                .map(|tok| {
+                    if !net.contains(tok) {
+                        return tok.to_string();
+                    }
+                    match net.get(tok).and_then(|n| n.node().default_intf().cloned()) {
+                        Some(intf) => match intf.ip {
+                            Some(ip) => ip.to_string(),
+                            None => tok.to_string(), // updateIP() or arg
+                        },
+                        None => {
+                            // Python's defaultIntf() warns then returns None
+                            // and `.updateIP()` crashes the CLI with
+                            // AttributeError; here the same warn line is
+                            // emitted (warn level -> out) and the node name
+                            // is kept (documented deviation: no crash).
+                            let _ = writeln!(
+                                io.out,
+                                "*** defaultIntf: warning: {tok} has no interfaces"
+                            );
+                            tok.to_string()
+                        }
+                    }
+                })
+                .collect();
+            let rest = rest.join(" ");
+            // node.sendCmd( rest ); self.waitForNode( node )
+            let name = first.clone();
+            if let Some(mut node) = net.get_mut(&name) {
+                let n = node.node_mut();
+                match n.send_cmd(&rest, false) {
+                    Ok(()) => match n.wait_output(None) {
+                        // waitForNode: output( data ) as it arrives.
+                        Ok(data) => {
+                            let _ = io.out.write_all(data.as_bytes());
+                        }
+                        Err(e) => {
+                            let _ = writeln!(io.err, "*** {name} waitOutput failed: {e}");
+                        }
+                    },
+                    // Python's sendCmd asserts `self.shell and not
+                    // self.waiting` and crashes the CLI on a non-started
+                    // node; here the error is reported (documented).
+                    Err(e) => {
+                        let _ = writeln!(io.err, "*** {name} cmd failed: {e}");
+                    }
+                }
+            }
+            return false;
+        }
+    }
+    let _ = writeln!(io.err, "*** Unknown command: {line}");
     false
 }
 
 /// `CLI.onecmd`: dispatch `cmd` with `arg` (the stripped rest of `line`).
 /// Returns true when the loop should stop (`exit`/`quit`/`EOF`).
-fn dispatch(
-    net: &mut Mininet,
-    cmd: &str,
-    arg: &str,
-    line: &str,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> bool {
+fn dispatch(net: &mut Mininet, cmd: &str, arg: &str, line: &str, io: &mut Io) -> bool {
     match cmd {
-        "help" => do_help(arg, out),
+        "help" => do_help(arg, io.out),
         "exit" | "quit" => return true,
         "EOF" => {
             // do_EOF: output('\n') then exit
-            let _ = writeln!(out);
+            let _ = writeln!(io.out);
             return true;
         }
-        "nodes" => do_nodes(net, out),
-        "net" => do_net(net, out),
-        "links" => do_links(net, out),
-        "dump" => do_dump(net, out),
-        "ports" => do_ports(net, out),
-        "intfs" => do_intfs(net, out),
-        "hosts" => do_list(net.hosts.keys(), out),
-        "switches" => do_list(net.switches.keys(), out),
-        "controllers" => do_list(net.controllers.keys(), out),
-        "ping" => do_ping(net, arg, out, err),
-        "pingall" => do_pingall(net, arg, out, err),
-        "pingallfull" => ping_full(net, None, out, err),
-        "pingpair" => do_ping_pair(net, out, err),
+        "nodes" => do_nodes(net, io.out),
+        "net" => do_net(net, io.out),
+        "links" => do_links(net, io.out),
+        "dump" => do_dump(net, io.out),
+        "ports" => do_ports(net, io.out),
+        "intfs" => do_intfs(net, io.out),
+        "hosts" => do_list(net.hosts.keys(), io.out),
+        "switches" => do_list(net.switches.keys(), io.out),
+        "controllers" => do_list(net.controllers.keys(), io.out),
+        "ping" => do_ping(net, arg, io),
+        "pingall" => do_pingall(net, arg, io),
+        "pingallfull" => ping_full(net, None, io),
+        "pingpair" => do_ping_pair(net, io),
         "pingpairfull" => {
             let names: Vec<String> = net.hosts.keys().take(2).map(str::to_string).collect();
-            ping_full(net, Some(names), out, err);
+            ping_full(net, Some(names), io);
         }
-        "iperf" => do_iperf(net, arg, out, err, false),
-        "iperfudp" => do_iperf(net, arg, out, err, true),
-        "dpctl" => do_dpctl(net, arg, out, err),
-        "sh" => do_sh(arg, out, err),
-        "xterm" => do_xterm(net, arg, err, "xterm"),
-        "gterm" => do_xterm(net, arg, err, "gterm"),
+        "iperf" => do_iperf(net, arg, io, false),
+        "iperfudp" => do_iperf(net, arg, io, true),
+        "dpctl" => do_dpctl(net, arg, io),
+        "sh" => do_sh(arg, io),
         "source" => {
-            do_source(net, arg, out, err);
+            do_source(net, arg, io);
         }
+        "link" => do_link(net, arg, io),
+        "switch" => do_switch(net, arg, io),
+        "wait" => do_wait(net),
+        "time" => do_time(net, arg, io),
+        "noecho" => do_noecho(net, arg, io),
+        "py" => do_py(net, arg, io),
+        "px" => do_px(net, arg, io),
+        "x" => do_x(net, arg, io),
+        "xterm" => do_xterm(net, arg, io, "xterm"),
+        "gterm" => do_xterm(net, arg, io, "gterm"),
         _ => {
-            default(line, err);
+            default(net, line, io);
         }
     }
     false
@@ -366,45 +512,45 @@ fn do_list<'a>(keys: impl Iterator<Item = &'a str>, out: &mut dyn Write) {
 }
 
 /// `do_pingall`: `self.mn.pingAll( line )` — the arg is the ping timeout.
-fn do_pingall(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Write) {
+fn do_pingall(net: &mut Mininet, arg: &str, io: &mut Io) {
     // Python: pingAll(line) with line='' is falsy -> no '-W' option.
     let timeout = if arg.is_empty() { None } else { Some(arg) };
     match net.ping_all(timeout) {
         Ok(r) => {
-            let _ = write!(out, "{}", r.output);
+            let _ = write!(io.out, "{}", r.output);
         }
         Err(e) => {
-            let _ = writeln!(err, "*** pingall failed: {e}");
+            let _ = writeln!(io.err, "*** pingall failed: {e}");
         }
     }
 }
 
 /// `do_pingpair`: `self.mn.pingPair()`.
-fn do_ping_pair(net: &mut Mininet, out: &mut dyn Write, err: &mut dyn Write) {
+fn do_ping_pair(net: &mut Mininet, io: &mut Io) {
     match net.ping_pair() {
         Ok(r) => {
-            let _ = write!(out, "{}", r.output);
+            let _ = write!(io.out, "{}", r.output);
         }
         Err(e) => {
-            let _ = writeln!(err, "*** pingpair failed: {e}");
+            let _ = writeln!(io.err, "*** pingpair failed: {e}");
         }
     }
 }
 
 /// Convenience `ping <a> <b>` (not in stock cli.py): `mn.ping([a, b])` with
 /// `do_iperf`-style node validation.
-fn do_ping(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Write) {
+fn do_ping(net: &mut Mininet, arg: &str, io: &mut Io) {
     let args = match parse_host_pair(arg) {
         Ok(a) => a,
         Err(line) => {
-            let _ = write!(err, "{line}");
+            let _ = write!(io.err, "{line}");
             return;
         }
     };
     let mut bad = false;
     for a in &args {
         if !net.contains(a) {
-            let _ = writeln!(err, "node '{a}' not in network");
+            let _ = writeln!(io.err, "node '{a}' not in network");
             bad = true;
         }
     }
@@ -414,20 +560,20 @@ fn do_ping(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Writ
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     match net.ping(Some(refs), None) {
         Ok(r) => {
-            let _ = write!(out, "{}", r.output);
+            let _ = write!(io.out, "{}", r.output);
         }
         Err(e) => {
-            let _ = writeln!(err, "*** ping failed: {e}");
+            let _ = writeln!(io.err, "*** ping failed: {e}");
         }
     }
 }
 
 /// `do_iperf` / `do_iperfudp`.
-fn do_iperf(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Write, udp: bool) {
+fn do_iperf(net: &mut Mininet, arg: &str, io: &mut Io, udp: bool) {
     let (hosts, udp_bw) = match parse_iperf_args(arg, udp) {
         Ok(v) => v,
         Err(line) => {
-            let _ = write!(err, "{line}");
+            let _ = write!(io.err, "{line}");
             return;
         }
     };
@@ -435,7 +581,7 @@ fn do_iperf(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Wri
         let mut bad = false;
         for x in [a, b] {
             if !net.contains(x) {
-                let _ = writeln!(err, "node '{x}' not in network");
+                let _ = writeln!(io.err, "node '{x}' not in network");
                 bad = true;
             }
         }
@@ -448,25 +594,25 @@ fn do_iperf(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Wri
     // Python mn.iperf defaults: l4Type, udpBw='10M', seconds=5, port=5001.
     match net.iperf(host_vec, l4, udp_bw, 5, 5001) {
         Ok(r) => {
-            let _ = write!(out, "{}", r.output);
+            let _ = write!(io.out, "{}", r.output);
         }
         Err(e) => {
-            let _ = writeln!(err, "*** iperf failed: {e}");
+            let _ = writeln!(io.err, "*** iperf failed: {e}");
         }
     }
 }
 
 /// `do_dpctl`: per switch, `output( '*** ' + name + ' ' + '-'*72 + '\n' )`
 /// then `output( sw.dpctl( *args ) )` (no added newline).
-fn do_dpctl(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Write) {
+fn do_dpctl(net: &mut Mininet, arg: &str, io: &mut Io) {
     let args: Vec<String> = arg.split_whitespace().map(str::to_string).collect();
     if args.is_empty() {
-        let _ = writeln!(err, "usage: dpctl command [arg1] [arg2] ...");
+        let _ = writeln!(io.err, "usage: dpctl command [arg1] [arg2] ...");
         return;
     }
     let names: Vec<String> = net.switches.keys().map(str::to_string).collect();
     for name in &names {
-        let _ = writeln!(out, "*** {name} {}", "-".repeat(72));
+        let _ = writeln!(io.out, "*** {name} {}", "-".repeat(72));
         let sw = net.net_switch_mut(name).expect("listed above");
         let res = match sw {
             NetSwitch::Ovs(s) => s.dpctl(&args),
@@ -477,10 +623,10 @@ fn do_dpctl(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Wri
         };
         match res {
             Ok(r) => {
-                let _ = write!(out, "{r}");
+                let _ = write!(io.out, "{r}");
             }
             Err(e) => {
-                let _ = writeln!(err, "*** dpctl failed on {name}: {e}");
+                let _ = writeln!(io.err, "*** dpctl failed on {name}: {e}");
             }
         }
     }
@@ -489,7 +635,7 @@ fn do_dpctl(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Wri
 /// `do_sh`: `call( line, shell=True )` — run via `/bin/sh -c`. The child's
 /// stdout/stderr are piped and forwarded to `out`/`err` (so scripted-stdin
 /// tests capture them); the exit status is ignored, like `call()`.
-fn do_sh(arg: &str, out: &mut dyn Write, err: &mut dyn Write) {
+fn do_sh(arg: &str, io: &mut Io) {
     let child = std::process::Command::new("sh")
         .arg("-c")
         .arg(arg)
@@ -500,60 +646,33 @@ fn do_sh(arg: &str, out: &mut dyn Write, err: &mut dyn Write) {
     match child {
         Ok(c) => match c.wait_with_output() {
             Ok(o) => {
-                let _ = out.write_all(&o.stdout);
-                let _ = err.write_all(&o.stderr);
+                let _ = io.out.write_all(&o.stdout);
+                let _ = io.err.write_all(&o.stderr);
             }
             Err(_) => {
-                let _ = writeln!(err, "*** sh failed for {arg:?}");
+                let _ = writeln!(io.err, "*** sh failed for {arg:?}");
             }
         },
         Err(e) => {
-            let _ = writeln!(err, "*** sh failed to spawn: {e}");
+            let _ = writeln!(io.err, "*** sh failed to spawn: {e}");
         }
-    }
-}
-
-/// `do_xterm` / `do_gterm`: validate args exactly like cli.py (usage line,
-/// `node 'x' not in network`), then emit a clear not-ported error instead of
-/// `makeTerms` (task spec: stub for now).
-fn do_xterm(net: &Mininet, arg: &str, err: &mut dyn Write, term: &str) {
-    let args: Vec<&str> = arg.split_whitespace().collect();
-    if args.is_empty() {
-        let _ = writeln!(err, "usage: {term} node1 node2 ...");
-        return;
-    }
-    let mut valid: Vec<&str> = Vec::new();
-    for a in &args {
-        if net.contains(a) {
-            valid.push(*a);
-        } else {
-            let _ = writeln!(err, "node '{a}' not in network");
-        }
-    }
-    if !valid.is_empty() {
-        let _ = writeln!(
-            err,
-            "*** {term}: not ported yet (mininet/term.py makeTerms TODO); \
-             would spawn {term} for: {}",
-            valid.join(" ")
-        );
     }
 }
 
 /// `do_source`: run each line of a file through the same dispatch. Python
 /// ignores `onecmd`'s return value here, so `exit` inside a sourced file does
 /// NOT stop the outer loop.
-fn do_source(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Write) {
+fn do_source(net: &mut Mininet, arg: &str, io: &mut Io) {
     let args: Vec<&str> = arg.split_whitespace().collect();
     if args.len() != 1 {
-        let _ = writeln!(err, "usage: source <file>");
+        let _ = writeln!(io.err, "usage: source <file>");
         return;
     }
     let path = args[0];
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => {
-            let _ = writeln!(err, "error reading file {path}");
+            let _ = writeln!(io.err, "error reading file {path}");
             return;
         }
     };
@@ -563,11 +682,503 @@ fn do_source(net: &mut Mininet, arg: &str, out: &mut dyn Write, err: &mut dyn Wr
             continue;
         }
         let stop = match cmd.as_deref() {
-            None => default(&line, err),
-            Some(c) => dispatch(net, c, &sarg, &line, out, err),
+            None => default(net, &line, io),
+            Some(c) => dispatch(net, c, &sarg, &line, io),
         };
         let _ = stop; // do_source ignores the stop signal
     }
+}
+
+// ---------------------------------------------------------------------
+// Task 10d handlers: link / switch / wait / time / noecho / py / px / x /
+// xterm (cli.py) — term spawning lives in crate::term (term.py port)
+// ---------------------------------------------------------------------
+
+/// `do_link` (cli.py): arg validation is byte-exact, then
+/// `mn.configLinkStatus( *args )` (ported below, since the scope of this
+/// task is `apps/mn/**` only).
+fn do_link(net: &mut Mininet, arg: &str, io: &mut Io) {
+    let args: Vec<&str> = arg.split_whitespace().collect();
+    if args.len() != 3 {
+        let _ = writeln!(io.err, "invalid number of args: link end1 end2 [up down]");
+        return;
+    }
+    if args[2] != "up" && args[2] != "down" {
+        let _ = writeln!(io.err, "invalid type: link end1 end2 [up down]");
+        return;
+    }
+    config_link_status(net, args[0], args[1], args[2], io);
+}
+
+/// Port of `Mininet.configLinkStatus` (net.py): for every link between
+/// `src` and `dst`, `intf.ifconfig( status )` on both ends — i.e.
+/// `node.cmd('ifconfig', <intf>, <status>)` in the owning node (exactly
+/// what Python's `Intf.ifconfig` runs). Error lines are byte-exact
+/// (`src`/`dst` render as node names via `Node.__str__`).
+fn config_link_status(net: &mut Mininet, src: &str, dst: &str, status: &str, io: &mut Io) {
+    if !net.contains(src) {
+        let _ = writeln!(io.err, "src not in network: {src}");
+        return;
+    }
+    if !net.contains(dst) {
+        let _ = writeln!(io.err, "dst not in network: {dst}");
+        return;
+    }
+    let idxs = net.links_between(src, dst);
+    if idxs.is_empty() {
+        // Python: error( 'src and dst not connected: %s %s' % ( src, dst ) )
+        // with src/dst re-bound to the Node objects — '%s' uses __str__ = name.
+        let _ = writeln!(io.err, "src and dst not connected: {src} {dst}");
+        return;
+    }
+    for idx in idxs {
+        // connectionsTo(src, dst): (srcIntf, dstIntf) per link, src's end first.
+        let (s_intf, d_intf) = {
+            let l = &net.links[idx];
+            if l.node1 == src {
+                (l.intf1.clone(), l.intf2.clone())
+            } else {
+                (l.intf2.clone(), l.intf1.clone())
+            }
+        };
+        for (intf, side) in [(&s_intf, "src"), (&d_intf, "dst")] {
+            let node_name = intf.node.clone();
+            let ifconfig = format!("ifconfig {} {status}", intf.name);
+            let Some(mut node) = net.get_mut(&node_name) else {
+                continue;
+            };
+            match node.node_mut().cmd(&ifconfig) {
+                Ok(result) => {
+                    if !result.is_empty() {
+                        let _ = writeln!(io.err, "link {side} status change failed: {result}");
+                    }
+                }
+                Err(_) => {
+                    // Non-started node: Python's cmd() warns
+                    // '(<node> exited - ignoring cmd%s)' (warn level -> out)
+                    // and returns None, so no "status change failed" line.
+                    let _ = writeln!(
+                        io.out,
+                        "({node_name} exited - ignoring cmd('ifconfig', '{}', '{status}'))",
+                        intf.name
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// `do_switch` (cli.py): start/stop a switch. Byte-exact errors — including
+/// cli.py's quirk of printing `args[1]` (the command) in `invalid switch:`.
+fn do_switch(net: &mut Mininet, arg: &str, io: &mut Io) {
+    let args: Vec<&str> = arg.split_whitespace().collect();
+    if args.len() != 2 {
+        let _ = writeln!(
+            io.err,
+            "invalid number of args: switch <switch name>{{start, stop}}"
+        );
+        return;
+    }
+    let sw = args[0];
+    let command = args[1];
+    if !net.contains(sw) || net.net_switch(sw).is_none() {
+        let _ = writeln!(io.err, "invalid switch: {}", args[1]);
+        return;
+    }
+    let name = sw.to_string();
+    match command {
+        "start" => {
+            // self.mn.get( sw ).start( self.mn.controllers ) — disjoint field
+            // borrows: controllers (immutable) + switches (mutable).
+            let controllers: Vec<_> = net.controllers.values().collect();
+            let sw = net.switches.get_mut(&name).expect("checked above");
+            if let Err(e) = sw.start(&controllers) {
+                // Python crashes here on a non-started net (no golden);
+                // reported instead (documented).
+                let _ = writeln!(io.err, "*** switch {name} start failed: {e}");
+            }
+        }
+        "stop" => {
+            // self.mn.get( sw ).stop( deleteIntfs=False )
+            let sw = net.switches.get_mut(&name).expect("checked above");
+            if let Err(e) = sw.stop(false) {
+                let _ = writeln!(io.err, "*** switch {name} stop failed: {e}");
+            }
+        }
+        _ => {
+            let _ = writeln!(
+                io.err,
+                "invalid command: switch <switch name> {{start, stop}}"
+            );
+        }
+    }
+}
+
+/// `do_wait` (cli.py): `self.mn.waitConnected()` — timeout=None, i.e. wait
+/// until every switch reports connected. The `info`/`warn` chatter goes to
+/// real stderr (same convention as `*** Starting CLI`), so the golden
+/// `out`/`err` surface only carries it on the real terminal.
+fn do_wait(net: &mut Mininet) {
+    eprintln!("*** Waiting for switches to connect");
+    let delay = 0.5; // Python's delay=.5
+    let mut remaining: Vec<String> = net.switches.keys().map(str::to_string).collect();
+    loop {
+        let mut still: Vec<String> = Vec::new();
+        for name in &remaining {
+            let s = net.switches.get_mut(name).expect("listed above");
+            if s.connected() {
+                // Python: info( '%s ' % switch ) — str(switch) is its name.
+                eprint!("{name} ");
+            } else {
+                still.push(name.clone());
+            }
+        }
+        remaining = still;
+        if remaining.is_empty() {
+            eprintln!();
+            return; // Python: info( '\n' ); return True
+        }
+        // timeout=None -> wait forever (Python's waitConnected() default)
+        std::thread::sleep(Duration::from_secs_f64(delay));
+    }
+}
+
+/// `do_time` (cli.py): time any command. The inner `onecmd(line)` applies
+/// `parseline` WITHOUT `precmd`, an empty line is `emptyline()` (no-op),
+/// and the inner stop flag is discarded (`time exit` does not exit); then
+/// `*** Elapsed time: %0.6f secs` is written to Cmd's stdout (`out`).
+fn do_time(net: &mut Mininet, arg: &str, io: &mut Io) {
+    let start = Instant::now();
+    let (cmd, sarg, line) = parseline(arg);
+    if !line.is_empty() {
+        match cmd.as_deref() {
+            None => {
+                default(net, &line, io);
+            }
+            Some(c) => {
+                let _ = dispatch(net, c, &sarg, &line, io); // stop flag ignored
+            }
+        }
+    }
+    let elapsed = start.elapsed().as_secs_f64();
+    let _ = writeln!(io.out, "*** Elapsed time: {elapsed:.6} secs");
+}
+
+/// `do_noecho` (cli.py): `stty -echo` around `default(arg)` on a tty only
+/// (`onecmd` passes the arg after `noecho`, and `default` re-parses it).
+fn do_noecho(net: &mut Mininet, arg: &str, io: &mut Io) {
+    if io.tty {
+        term::quiet_run("stty -echo");
+    }
+    default(net, arg, io);
+    if io.tty {
+        term::quiet_run("stty echo");
+    }
+}
+
+/// `do_xterm` / `do_gterm` (cli.py): validate args exactly (usage line /
+/// `node 'x' not in network`, in order), then `makeTerms([node], term=term)`
+/// — a real spawn via [`term::make_term`] (root-gated: the loop only runs
+/// on a started net).
+fn do_xterm(net: &mut Mininet, arg: &str, io: &mut Io, term: &str) {
+    let args: Vec<&str> = arg.split_whitespace().collect();
+    if args.is_empty() {
+        let _ = writeln!(io.err, "usage: {term} node1 node2 ...");
+        return;
+    }
+    for a in &args {
+        if !net.contains(a) {
+            let _ = writeln!(io.err, "node '{a}' not in network");
+        } else {
+            let name = (*a).to_string();
+            if let Some(mut node) = net.get_mut(&name) {
+                term::make_term(
+                    &mut node,
+                    "Node",
+                    term,
+                    io.display,
+                    "bash",
+                    io.err,
+                    &mut io.terms,
+                );
+            }
+        }
+    }
+}
+
+/// `do_x` (cli.py): `runX11( node, cmd )`. Python looks the node up with
+/// `self.mn[args[0]]` and crashes with `KeyError` on an unknown name; here
+/// the `node '<name>' not in network` line is printed instead (documented).
+fn do_x(net: &mut Mininet, arg: &str, io: &mut Io) {
+    let args: Vec<&str> = arg.split_whitespace().collect();
+    if args.is_empty() {
+        let _ = writeln!(io.err, "usage: x node [cmd args]...");
+        return;
+    }
+    if !net.contains(args[0]) {
+        let _ = writeln!(io.err, "node '{}' not in network", args[0]);
+        return;
+    }
+    let name = args[0].to_string();
+    let cmd: Vec<String> = args[1..].iter().map(|s| s.to_string()).collect();
+    if let Some(mut node) = net.get_mut(&name) {
+        term::run_x11(&mut node, &cmd, io.display, io.err, &mut io.terms);
+    }
+}
+
+/// `do_py` (cli.py): evaluate a Python expression with `net` (and every
+/// node name) in scope. Implemented as a `python3 -c` subprocess fed a JSON
+/// summary of the net (the task-sanctioned safe subset — see module docs);
+/// the wrapper reproduces eval-result printing and the `output(str(e))`
+/// exception path byte-exact.
+fn do_py(net: &Mininet, arg: &str, io: &mut Io) {
+    run_py(net, arg, true, io);
+}
+
+/// `do_px` (cli.py): execute a Python statement with `net` in scope.
+fn do_px(net: &Mininet, arg: &str, io: &mut Io) {
+    run_py(net, arg, false, io);
+}
+
+/// Run `line` in a `python3 -c` wrapper (`PY_WRAPPER`) with mode `py`
+/// (eval) or `px` (exec). `MN_NET_JSON` carries the net summary,
+/// `MN_PY_LINE` the user line, `MN_PY_STATE` the pickled persistent locals
+/// file (created lazily on first use, removed when the loop ends).
+fn run_py(net: &Mininet, line: &str, eval_mode: bool, io: &mut Io) {
+    if io.py_state.is_none() {
+        io.py_state = Some(std::env::temp_dir().join(format!(
+                "mn-repl-py-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            )));
+    }
+    let state = io.py_state.clone().expect("just set");
+    let summary = net_summary_json(net);
+    let mode = if eval_mode { "py" } else { "px" };
+    let spawned = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(PY_WRAPPER)
+        .arg(mode)
+        .env("MN_PY_LINE", line)
+        .env("MN_NET_JSON", &summary)
+        .env("MN_PY_STATE", &state)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    match spawned {
+        Ok(c) => match c.wait_with_output() {
+            Ok(o) => {
+                let _ = io.out.write_all(&o.stdout);
+                let _ = io.err.write_all(&o.stderr);
+            }
+            Err(e) => {
+                let _ = writeln!(io.err, "*** {mode} failed: {e}");
+            }
+        },
+        // Python always has its own interpreter; a missing python3 binary
+        // is reported here (documented).
+        Err(e) => {
+            let _ = writeln!(io.err, "*** {mode} failed to spawn python3: {e}");
+        }
+    }
+}
+
+/// The `python3 -c` wrapper for `py`/`px`. argv[1] is the mode (`py`/`px`);
+/// `MN_PY_LINE` is the user line, `MN_NET_JSON` the net summary, and
+/// `MN_PY_STATE` (optional) a pickle file holding the persistent locals
+/// dict across `py`/`px` calls (Python's `CLI.locals`, which is seeded
+/// with `net` + node names on every `getLocals()`).
+const PY_WRAPPER: &str = r#"
+import json, os, pickle, sys
+_mode = sys.argv[1]
+_line = os.environ["MN_PY_LINE"]
+_state = os.environ.get("MN_PY_STATE")
+# Shim classes must be defined before the pickled state is loaded (pickle
+# resolves them as __main__._Node / __main__._Net).
+class _Node:
+    def __init__(self, d):
+        self.name = d["name"]; self.kind = d["kind"]; self.pid = d["pid"]
+        self.ip = d["ip"]; self.intfs = d["intfs"]
+    def __repr__(self):
+        intfs = ",".join("%s:%s" % (i["name"], i["ip"]) for i in self.intfs)
+        return "<%s %s: %s pid=%s> " % (self.kind, self.name, intfs, self.pid)
+    def IP(self, intf=None):
+        if intf is None:
+            return self.ip
+        for i in self.intfs:
+            if i["name"] == intf:
+                return i["ip"]
+        return None
+    def intfNames(self):
+        return [i["name"] for i in self.intfs]
+    def cmd(self, *args):
+        # On a started net run the command in the node's namespace via
+        # mnexec (Python's Node.cmd); on a non-started net reproduce
+        # Python's warn line + None.
+        if self.pid:
+            import subprocess
+            _p = subprocess.run(
+                ["mnexec", "-da", str(self.pid), "sh", "-c", " ".join(args)],
+                capture_output=True, text=True)
+            sys.stdout.write(_p.stdout)
+            return _p.stdout
+        sys.stdout.write("(%s exited - ignoring cmd%s)\n" % (self.name, args))
+        return None
+class _Net:
+    def __init__(self, nodes, hosts, switches, controllers):
+        self._nodes = {n["name"]: _Node(n) for n in nodes}
+        self.hosts = [self._nodes[n] for n in hosts]
+        self.switches = [self._nodes[n] for n in switches]
+        self.controllers = [self._nodes[n] for n in controllers]
+    def __iter__(self):
+        return iter(list(self._nodes))
+    def __len__(self):
+        return len(self._nodes)
+    def __contains__(self, key):
+        return key in self._nodes
+    def __getitem__(self, key):
+        return self._nodes[key]
+    def keys(self):
+        return list(self._nodes)
+    def values(self):
+        return list(self._nodes.values())
+_ns = {}
+if _state and os.path.exists(_state):
+    try:
+        with open(_state, "rb") as _f:
+            _ns = pickle.load(_f)
+    except Exception:
+        _ns = {}
+if not isinstance(_ns, dict):
+    _ns = {}
+_summary = json.loads(os.environ["MN_NET_JSON"])
+net = _Net(_summary["nodes"], _summary["hosts"], _summary["switches"],
+           _summary["controllers"])
+# getLocals(): self.locals.update( self.mn ) — net + node names, always.
+_ns["net"] = net
+for _n in _summary["nodes"]:
+    _ns[_n["name"]] = net[_n["name"]]
+try:
+    if _mode == "py":
+        _r = eval(_line, globals(), _ns)
+        if _r is None:
+            pass
+        elif isinstance(_r, str):
+            sys.stdout.write(_r + "\n")
+        else:
+            sys.stdout.write(repr(_r) + "\n")
+    else:
+        exec(_line, globals(), _ns)
+except Exception as _e:
+    sys.stdout.write(str(_e) + "\n")
+if _state:
+    try:
+        with open(_state, "wb") as _f:
+            pickle.dump(_ns, _f)
+    except Exception:
+        pass
+"#;
+
+/// Minimal JSON string escaper (names/IPs are simple, but escape properly).
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// JSON rendering of an `Option<String>` (`null` when None).
+fn json_opt(s: Option<String>) -> String {
+    s.map(|v| json_str(&v))
+        .unwrap_or_else(|| "null".to_string())
+}
+
+/// The net summary passed to the `py`/`px` wrapper as `MN_NET_JSON`:
+/// `{"nodes": [{"name", "kind", "pid", "ip", "intfs": [{"name","ip"}]}],
+///   "hosts": [...], "switches": [...], "controllers": [...]}`.
+/// Pure (unit-tested below).
+fn net_summary_json(net: &Mininet) -> String {
+    let mut nodes = Vec::new();
+    for name in net.keys() {
+        let node = net.get(&name).expect("keys in sync");
+        let n = node.node();
+        let intfs: Vec<String> = node_intfs(node)
+            .into_iter()
+            .map(|(iname, _)| {
+                let ip = match &node {
+                    NodeRef::Switch(s) => s
+                        .control_intf
+                        .as_ref()
+                        .filter(|lo| lo.name == iname)
+                        .map(|lo| {
+                            if lo.name == "lo" {
+                                // Python Intf.__init__: lo -> 127.0.0.1
+                                Some("127.0.0.1".parse().expect("valid IP"))
+                            } else {
+                                lo.ip
+                            }
+                        })
+                        .unwrap_or(None),
+                    _ => n.intf(Some(&iname)).ok().and_then(|i| i.ip),
+                };
+                format!(
+                    "{{\"name\": {}, \"ip\": {}}}",
+                    json_str(&iname),
+                    json_opt(ip.map(|a| a.to_string()))
+                )
+            })
+            .collect();
+        // Python's defaultIntf(): Switch returns its control intf (lo ->
+        // 127.0.0.1), others the lowest-port intf.
+        let ip = match node {
+            NodeRef::Switch(s) => match &s.control_intf {
+                Some(lo) if lo.name == "lo" => Some("127.0.0.1".to_string()),
+                Some(lo) => lo.ip.map(|a| a.to_string()),
+                None => s
+                    .node()
+                    .default_intf()
+                    .and_then(|i| i.ip)
+                    .map(|a| a.to_string()),
+            },
+            _ => n.default_intf().and_then(|i| i.ip).map(|a| a.to_string()),
+        };
+        nodes.push(format!(
+            "{{\"name\": {}, \"kind\": {}, \"pid\": {}, \"ip\": {}, \"intfs\": [{}]}}",
+            json_str(&name),
+            json_str(n.kind()),
+            match n.pid() {
+                Some(p) => p.to_string(),
+                None => "null".to_string(),
+            },
+            json_opt(ip),
+            intfs.join(", ")
+        ));
+    }
+    let names = |keys: Vec<String>| {
+        keys.iter()
+            .map(|k| json_str(k))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    format!(
+        "{{\"nodes\": [{}], \"hosts\": [{}], \"switches\": [{}], \"controllers\": [{}]}}",
+        nodes.join(", "),
+        names(net.hosts.keys().map(str::to_string).collect()),
+        names(net.switches.keys().map(str::to_string).collect()),
+        names(net.controllers.keys().map(str::to_string).collect()),
+    )
 }
 
 // ---------------------------------------------------------------------
@@ -583,16 +1194,11 @@ type PingFullRow = (String, String, u64, u64, f64, f64, f64, f64);
 
 /// Port of `Mininet.pingFull`: per ordered host pair run
 /// `ping -c1 <opts> <dest.IP()>` and print `*** Results:` with per-pair rtt.
-fn ping_full(
-    net: &mut Mininet,
-    hosts: Option<Vec<String>>,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) {
+fn ping_full(net: &mut Mininet, hosts: Option<Vec<String>>, io: &mut Io) {
     let names: Vec<String> = match hosts {
         Some(v) if !v.is_empty() => v,
         _ => {
-            let _ = writeln!(out, "*** Ping: testing ping reachability");
+            let _ = writeln!(io.out, "*** Ping: testing ping reachability");
             net.hosts.keys().map(str::to_string).collect()
         }
     };
@@ -612,7 +1218,7 @@ fn ping_full(
     }
     let mut all_outputs: Vec<PingFullRow> = Vec::new();
     for src in &names {
-        let _ = write!(out, "{src} -> ");
+        let _ = write!(io.out, "{src} -> ");
         for (dst, ip) in &dests {
             if src == dst {
                 continue;
@@ -628,7 +1234,7 @@ fn ping_full(
                 },
                 None => String::new(),
             };
-            let (sent, received, rttmin, rttavg, rttmax, rttdev) = parse_ping_full(&result, err);
+            let (sent, received, rttmin, rttavg, rttmax, rttdev) = parse_ping_full(&result, io.err);
             all_outputs.push((
                 src.clone(),
                 dst.clone(),
@@ -640,18 +1246,18 @@ fn ping_full(
                 rttdev,
             ));
             if received > 0 {
-                let _ = write!(out, "{dst} ");
+                let _ = write!(io.out, "{dst} ");
             } else {
-                let _ = write!(out, "X ");
+                let _ = write!(io.out, "X ");
             }
         }
-        let _ = writeln!(out);
+        let _ = writeln!(io.out);
     }
-    let _ = writeln!(out, "*** Results: ");
+    let _ = writeln!(io.out, "*** Results: ");
     for (src, dst, sent, received, rttmin, rttavg, rttmax, rttdev) in &all_outputs {
-        let _ = write!(out, " {src}->{dst}: {sent}/{received}, ");
+        let _ = write!(io.out, " {src}->{dst}: {sent}/{received}, ");
         let _ = writeln!(
-            out,
+            io.out,
             "rtt min/avg/max/mdev {rttmin:.3}/{rttavg:.3}/{rttmax:.3}/{rttdev:.3} ms"
         );
     }
@@ -1158,6 +1764,36 @@ However, starting up an xterm/gterm is generally better:\n  mininet> xterm h2\n\
         assert_eq!(parse_transmitted(loss), Some((5, 3)));
         assert_eq!(parse_rtt(loss), None);
         assert_eq!(parse_transmitted("garbage"), None);
+    }
+
+    #[test]
+    fn net_summary_json_shape_for_single3() {
+        let net = Mininet::dry_run(
+            "single,3",
+            mn_net::MininetOptions {
+                controller: None,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let j = net_summary_json(&net);
+        assert_eq!(
+            j,
+            "{\"nodes\": [\
+             {\"name\": \"h1\", \"kind\": \"Host\", \"pid\": null, \"ip\": \"10.0.0.1\", \"intfs\": [{\"name\": \"h1-eth0\", \"ip\": \"10.0.0.1\"}]}, \
+             {\"name\": \"h2\", \"kind\": \"Host\", \"pid\": null, \"ip\": \"10.0.0.2\", \"intfs\": [{\"name\": \"h2-eth0\", \"ip\": \"10.0.0.2\"}]}, \
+             {\"name\": \"h3\", \"kind\": \"Host\", \"pid\": null, \"ip\": \"10.0.0.3\", \"intfs\": [{\"name\": \"h3-eth0\", \"ip\": \"10.0.0.3\"}]}, \
+             {\"name\": \"s1\", \"kind\": \"OVSSwitch\", \"pid\": null, \"ip\": \"127.0.0.1\", \"intfs\": [{\"name\": \"lo\", \"ip\": \"127.0.0.1\"}, {\"name\": \"s1-eth1\", \"ip\": null}, {\"name\": \"s1-eth2\", \"ip\": null}, {\"name\": \"s1-eth3\", \"ip\": null}]}], \
+             \"hosts\": [\"h1\", \"h2\", \"h3\"], \"switches\": [\"s1\"], \"controllers\": []}"
+        );
+    }
+
+    #[test]
+    fn json_str_escapes() {
+        assert_eq!(json_str("h1"), "\"h1\"");
+        assert_eq!(json_str("a\"b\\c"), "\"a\\\"b\\\\c\"");
+        assert_eq!(json_opt(None), "null");
+        assert_eq!(json_opt(Some("10.0.0.1".to_string())), "\"10.0.0.1\"");
     }
 
     #[test]
