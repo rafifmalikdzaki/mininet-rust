@@ -14,11 +14,14 @@ pub fn mn_bin() -> &'static str {
 }
 
 /// Run `mn` with the given args, capturing output.
+///
+/// Wrapped in `timeout 120` so a hung run (e.g. ping with no deadline on a
+/// datapath that blackholes packets) fails fast with rc=124 and captured
+/// output instead of blocking the whole root-test step until its timeout.
 pub fn run_mn(args: &[&str]) -> Output {
-    Command::new(mn_bin())
-        .args(args)
-        .output()
-        .expect("failed to spawn mn binary")
+    let mut cmd = Command::new("timeout");
+    cmd.arg("120").arg(mn_bin()).args(args);
+    cmd.output().expect("failed to spawn timeout/mn binary")
 }
 
 /// Directory of this crate's `tests/` tree (via CARGO_MANIFEST_DIR).

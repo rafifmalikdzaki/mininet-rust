@@ -97,6 +97,11 @@ jobs:
       # ovs-vsctl (OVSSwitch default) works.
       - name: Start Open vSwitch daemons (container has no systemd)
         run: |
+          # The container shares the host kernel; make sure the OVS kernel
+          # datapath module is loaded, otherwise OVS ports blackhole packets
+          # and pingall hangs (no ping deadline by default, like Python).
+          modprobe openvswitch 2>/dev/null || true
+          grep -c '^openvswitch' /proc/modules || echo "WARNING: openvswitch module not loaded"
           mkdir -p /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
           if [ ! -f /etc/openvswitch/conf.db ]; then
             ovsdb-tool create /etc/openvswitch/conf.db \

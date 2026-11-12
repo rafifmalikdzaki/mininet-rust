@@ -37,7 +37,9 @@ fn root_repl_interactive_loop_single3() {
     )
     .unwrap();
     net.start().unwrap();
-    let script = "nodes\ndump\nlinks\npingall\nping h1 h2\nexit\n";
+    // `pingall 2` bounds each ping with -W 2s so a blackholed datapath fails
+    // fast instead of hanging the test step (Python has the same option).
+    let script = "nodes\ndump\nlinks\npingall 2\nping h1 h2\nexit\n";
     let mut input = std::io::Cursor::new(script.as_bytes().to_vec());
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
@@ -152,7 +154,8 @@ fn root_10d_passthrough_link_wait_on_started_net() {
     )
     .unwrap();
     net.start().unwrap();
-    let script = "h1 ping -c 1 h2\nh1\nnope cmd\nlink h1 s1 down\nlink h1 s1 up\nlinks\nexit\n";
+    let script =
+        "h1 ping -c 1 -W 2 h2\nh1\nnope cmd\nlink h1 s1 down\nlink h1 s1 up\nlinks\nexit\n";
     let mut input = std::io::Cursor::new(script.as_bytes().to_vec());
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
@@ -164,8 +167,8 @@ fn root_10d_passthrough_link_wait_on_started_net() {
     stop.unwrap();
     // passthrough: h2 substituted by its IP, real ping output on `out`
     assert!(
-        out.contains("ping -c 1 10.0.0.2") || out.contains("PING 10.0.0.2"),
-        "passthrough should run 'ping -c 1 10.0.0.2' on h1, out: {out:?}"
+        out.contains("ping -c 1 -W 2 10.0.0.2") || out.contains("PING 10.0.0.2"),
+        "passthrough should run 'ping -c 1 -W 2 10.0.0.2' on h1, out: {out:?}"
     );
     assert!(
         out.contains("1 received") || out.contains("1 packets received"),
