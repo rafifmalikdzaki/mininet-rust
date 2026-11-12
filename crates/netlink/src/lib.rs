@@ -109,6 +109,19 @@ impl Netlink {
     pub(crate) fn run<F: Future>(&self, fut: F) -> F::Output {
         self.rt.block_on(fut)
     }
+
+    /// Public variant of [`Netlink::run`] for other crates (e.g. `mn-link`'s
+    /// `Tc`, which has no runtime of its own and rides on a shared
+    /// `&Netlink` so its ops can run inside [`run_in_netns`] closures).
+    pub fn run_fut<F: Future>(&self, fut: F) -> F::Output {
+        self.run(fut)
+    }
+
+    /// Clone the rtnetlink handle so callers can issue their own requests on
+    /// this connection (driven by [`Netlink::run_fut`]).
+    pub fn handle(&self) -> Handle {
+        self.handle.clone()
+    }
 }
 
 /// Whether root/namespace integration tests should actually run.

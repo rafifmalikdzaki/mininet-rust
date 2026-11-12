@@ -75,9 +75,13 @@ fn mbps_to_bytes_per_sec(mbps: f64) -> u64 {
 /// Port allocation (`Node.newPort`) belongs to the node crate; here ports
 /// default to 0 (and interface names to `node-eth<port>`) when not given.
 ///
-/// ```ignore
+/// ```
+/// use mn_link::{Link, LinkConfig};
+/// # fn main() -> Result<(), mn_link::Error> {
 /// let link = Link::new(LinkConfig::new("h1", "h2").ports(Some(0), Some(1)))?;
 /// let tc = Link::new(LinkConfig::new("h1", "h2").spec("tc,bw=10,delay=5ms")?)?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct LinkConfig {
@@ -261,15 +265,12 @@ impl Link {
             self.intf2.mac,
         )?;
 
-        // Qdiscs attach to the device and travel with the end on a netns
-        // move, so install them while both ends are still local.
-        self.install_qdiscs(ops)?;
-
         // moveIntf: move each end into its node's netns first. The kernel
-        // drops IFF_UP and addresses on a netns move (verified against
-        // iproute2), and Python configures the interface inside the node
-        // after the move — so configure (up + addr) each end in its own
-        // namespace afterwards.
+        // drops IFF_UP, addresses AND qdiscs on a netns move (verified
+        // empirically with iproute2: a netem qdisc installed before the move
+        // is gone afterwards), and Python configures the interface inside
+        // the node after the move — so configure (qdisc + up + addr) each
+        // end in its own namespace afterwards.
         self.move_ends(ops, node1_pid, node2_pid)?;
         self.configure_ends(ops, node1_pid, node2_pid)?;
 
@@ -279,9 +280,12 @@ impl Link {
         Ok(())
     }
 
-    /// Bring each end up and assign any configured IP/prefix, in the
-    /// namespace the end lives in after `move_ends` (locally for
-    /// root-namespace ends, via a forked child for namespaced nodes).
+    /// Configure each end in the namespace it lives in after `move_ends`
+    /// (locally for root-namespace ends, via a forked child for namespaced
+    /// nodes): install the netem qdisc for TC links, bring the end up, and
+    /// assign any configured IP/prefix. This must happen **after** the move
+    /// because the kernel drops IFF_UP, addresses and qdiscs on a netns
+    /// move.
     fn configure_ends(
         &self,
         ops: &LinkOps,
@@ -292,56 +296,54 @@ impl Link {
             let name = intf.name.clone();
             let ip = intf.ip;
             let prefix_len = intf.prefix_len;
+            // Snapshot the netem config for the end so the closure below is
+            // self-contained.
+            let netem = if self.kind.uses_tc() && self.params.has_tc() {
+                let bw = self.params.effective_bw_mbps(&intf.node);
+                Some(NetemConfig {
+                    delay: self.params.delay,
+                    jitter: self.params.jitter,
+                    loss_percent: self.params.loss,
+                    limit: self.params.max_queue_size,
+                    rate_bytes_per_sec: bw.map(mbps_to_bytes_per_sec),
+                })
+            } else {
+                None
+            };
+            let tc = ops.tc;
+            let configure = move |nl: &Netlink| -> Result<()> {
+                if let Some(cfg) = &netem {
+                    // Python clears a pre-existing root qdisc unless it is a
+                    // priomap/noqueue qdisc.
+                    let root_kind = tc
+                        .qdisc_list(nl, &name)?
+                        .into_iter()
+                        .find(|q| q.parent == crate::tc::TC_H_ROOT)
+                        .map(|q| q.kind);
+                    if !matches!(root_kind.as_deref(), Some("noqueue") | Some("prio")) {
+                        tc.del_root_qdisc(nl, &name)?;
+                    }
+                    tc.add_netem(nl, &name, cfg)?;
+                }
+                nl.link_set_up(&name, true)?;
+                if let (Some(ip), Some(prefix_len)) = (ip, prefix_len) {
+                    nl.addr_add(&name, ip, prefix_len)?;
+                }
+                Ok(())
+            };
             let local = match pid {
                 None => true,
                 Some(p) => p == std::process::id(),
             };
             if local {
-                ops.nl.link_set_up(&name, true)?;
-                if let (Some(ip), Some(prefix_len)) = (ip, prefix_len) {
-                    ops.nl.addr_add(&name, ip, prefix_len)?;
-                }
+                configure(&ops.nl)?;
             } else {
-                let pid = pid.unwrap();
-                mn_netlink::run_in_netns(pid, move |nl| {
-                    nl.link_set_up(&name, true)?;
-                    if let (Some(ip), Some(prefix_len)) = (ip, prefix_len) {
-                        nl.addr_add(&name, ip, prefix_len)?;
-                    }
-                    Ok(())
+                // run_in_netns's closure must return mn_netlink::Result; the
+                // qdisc ops return crate::Error, so flatten to Other here
+                // (the outer `?` restores Error::Netlink via From).
+                mn_netlink::run_in_netns(pid.unwrap(), move |nl| {
+                    configure(nl).map_err(|e| mn_netlink::Error::Other(e.to_string()))
                 })?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Install the netem qdisc on both ends for TC links with TC params.
-    fn install_qdiscs(&self, ops: &LinkOps) -> Result<()> {
-        if self.kind.uses_tc() && self.params.has_tc() {
-            for intf in [&self.intf1, &self.intf2] {
-                // Python clears a pre-existing root qdisc unless it is a
-                // priomap/noqueue qdisc.
-                let root_kind = ops
-                    .tc
-                    .qdisc_list(&ops.nl, &intf.name)?
-                    .into_iter()
-                    .find(|q| q.parent == crate::tc::TC_H_ROOT)
-                    .map(|q| q.kind);
-                if !matches!(root_kind.as_deref(), Some("noqueue") | Some("prio")) {
-                    ops.tc.del_root_qdisc(&ops.nl, &intf.name)?;
-                }
-                let bw = self.params.effective_bw_mbps(&intf.node);
-                ops.tc.add_netem(
-                    &ops.nl,
-                    &intf.name,
-                    &NetemConfig {
-                        delay: self.params.delay,
-                        jitter: self.params.jitter,
-                        loss_percent: self.params.loss,
-                        limit: self.params.max_queue_size,
-                        rate_bytes_per_sec: bw.map(mbps_to_bytes_per_sec),
-                    },
-                )?;
             }
         }
         Ok(())
@@ -697,16 +699,14 @@ mod tests {
         assert!(ops.nl.link_index("h2-eth0").unwrap().is_none());
 
         // Verify inside that netns with a short-lived verifier child.
-        // SAFETY: BOTH tokio runtimes are built BEFORE the fork — creating a
+        // SAFETY: the tokio runtime is built BEFORE the fork — creating a
         // runtime after fork(2) can deadlock on the malloc lock (the exact
         // hazard Netlink::from_runtime's docs warn about; observed as a hang
         // on the first privileged CI run). The child setns's into `ns`, does
-        // read-only netlink dumps on the pre-fork runtimes, then raw _exit.
+        // read-only netlink dumps on the pre-fork runtime, then raw _exit.
+        // (`Tc` is a unit struct riding on that same `Netlink`, so it needs
+        // no runtime of its own.)
         let rt_nl = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let rt_tc = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
@@ -725,8 +725,7 @@ mod tests {
                         let nl = std::mem::ManuallyDrop::new(
                             mn_netlink::Netlink::from_runtime(rt_nl).map_err(|_| 3)?,
                         );
-                        let tc =
-                            std::mem::ManuallyDrop::new(Tc::from_runtime(rt_tc).map_err(|_| 4)?);
+                        let tc = Tc;
                         let l2 = nl.link_get("h2-eth0").map_err(|_| 5)?.ok_or(6)?;
                         if !l2.is_up {
                             return Err(7);

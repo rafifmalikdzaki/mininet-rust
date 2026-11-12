@@ -28,7 +28,6 @@
 //! netem's own rate limiter `TCA_NETEM_RATE64` (bytes/sec) — see the crate
 //! docs for why this slice does not build the HTB qdisc+class via netlink.
 
-use std::future::Future;
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -39,7 +38,6 @@ use netlink_packet_core::{
 };
 use netlink_packet_route::tc::{TcAttribute, TcHandle, TcMessage};
 use netlink_packet_route::RouteNetlinkMessage;
-use rtnetlink::Handle;
 
 use crate::{Error, Result};
 
@@ -155,54 +153,34 @@ pub struct QdiscInfo {
     pub kind: String,
 }
 
-/// Synchronous facade over an rtnetlink connection for TrafficControl
-/// messages. Same pattern as [`mn_netlink::Netlink`]: owns a current-thread
-/// tokio runtime; opening the socket needs no privileges, qdisc
-/// add/change/del need root + `CAP_NET_ADMIN`.
+/// Stateless TrafficControl facade. It owns no socket and no runtime: every
+/// method takes the shared [`mn_netlink::Netlink`] connection and drives its
+/// futures via [`Netlink::run_fut`], so qdisc ops can run **inside a
+/// namespace** (e.g. in an [`mn_netlink::run_in_netns`] closure after a veth
+/// end was moved into a node's netns — the kernel drops qdiscs on a netns
+/// move, so qdiscs must be installed after the move, in the target ns).
 ///
-/// (mn-link keeps its own connection because `mn-netlink` deliberately does
-/// not expose its handle or runtime; interface-index resolution is shared
-/// by taking a `&Netlink` — see `require_index`. The veth/address ops
-/// still go through `mn_netlink::Netlink` — see [`crate::LinkOps`].)
-#[derive(Debug)]
-pub struct Tc {
-    rt: tokio::runtime::Runtime,
-    handle: Handle,
-}
+/// Opening the socket needs no privileges; qdisc add/del need root +
+/// `CAP_NET_ADMIN`.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Tc;
 
 impl Tc {
-    /// Open a `NETLINK_ROUTE` socket and spawn the connection driver on an
-    /// internal current-thread tokio runtime.
+    /// A `Tc` is a zero-sized handle — nothing to open.
     pub fn new() -> Result<Self> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
-        Self::from_runtime(rt)
+        Ok(Self)
     }
 
-    /// Build a `Tc` on an existing current-thread runtime. Fork children must
-    /// use this with a runtime created **before** fork(2) — creating a
-    /// runtime after fork can deadlock on the malloc lock (same rule as
-    /// [`mn_netlink::Netlink::from_runtime`]).
-    pub fn from_runtime(rt: tokio::runtime::Runtime) -> Result<Self> {
-        let handle = rt.block_on(async {
-            let (connection, handle, _messages) =
-                rtnetlink::new_connection().map_err(|e| Error::Tc(e.to_string()))?;
-            tokio::spawn(connection);
-            Ok::<Handle, Error>(handle)
-        })?;
-        Ok(Self { rt, handle })
-    }
-
-    fn run<F: Future>(&self, fut: F) -> F::Output {
-        self.rt.block_on(fut)
-    }
-
-    /// Send one qdisc message (`RTM_NEWQDISC`/`RTM_DELQDISC`) and turn an
-    /// NLMSG_ERROR payload into an [`Error::Tc`].
-    fn send_qdisc(&self, message: RouteNetlinkMessage, extra_flags: u16) -> Result<()> {
-        self.run(async {
-            let mut handle = self.handle.clone();
+    /// Send one qdisc message (`RTM_NEWQDISC`/`RTM_DELQDISC`) on `nl`'s
+    /// connection and turn an NLMSG_ERROR payload into an [`Error::Tc`].
+    fn send_qdisc(
+        &self,
+        nl: &Netlink,
+        message: RouteNetlinkMessage,
+        extra_flags: u16,
+    ) -> Result<()> {
+        nl.run_fut(async {
+            let mut handle = nl.handle();
             let mut req = NetlinkMessage::from(message);
             req.header.flags = NLM_F_REQUEST | NLM_F_ACK | extra_flags;
             let mut resp = handle
@@ -224,14 +202,15 @@ impl Tc {
 
     /// Install a netem root qdisc on `ifname` (equivalent of
     /// `tc qdisc add dev <ifname> root handle 10: netem <args>`).
-    /// `nl` resolves the interface name to its index.
+    /// `nl` resolves the interface name to its index and carries the
+    /// connection the message is sent on.
     pub fn add_netem(&self, nl: &Netlink, ifname: &str, cfg: &NetemConfig) -> Result<()> {
         let index = require_index(nl, ifname)?;
-        self.add_netem_index(index, cfg)
+        self.add_netem_index(nl, index, cfg)
     }
 
     /// [`Tc::add_netem`] by interface index.
-    pub fn add_netem_index(&self, ifindex: u32, cfg: &NetemConfig) -> Result<()> {
+    pub fn add_netem_index(&self, nl: &Netlink, ifindex: u32, cfg: &NetemConfig) -> Result<()> {
         let mut msg = TcMessage::with_index(ifindex as i32);
         msg.header.handle = TcHandle::from(NETEM_HANDLE);
         msg.header.parent = TcHandle::ROOT;
@@ -241,13 +220,15 @@ impl Tc {
             build_netem_options(cfg),
         )));
         self.send_qdisc(
+            nl,
             RouteNetlinkMessage::NewQueueDiscipline(msg),
             NLM_F_CREATE | NLM_F_EXCL,
         )
     }
 
     /// Delete the root qdisc of `ifname` (`tc qdisc del dev <ifname> root`).
-    /// `nl` resolves the interface name to its index.
+    /// `nl` resolves the interface name to its index and carries the
+    /// connection the message is sent on.
     pub fn del_root_qdisc(&self, nl: &Netlink, ifname: &str) -> Result<()> {
         let index = require_index(nl, ifname)?;
         // Delete by the root qdisc's actual handle: with handle=UNSPEC the
@@ -267,15 +248,16 @@ impl Tc {
         let mut msg = TcMessage::with_index(index as i32);
         msg.header.parent = TcHandle::ROOT;
         msg.header.handle = TcHandle::from(handle);
-        self.send_qdisc(RouteNetlinkMessage::DelQueueDiscipline(msg), 0)
+        self.send_qdisc(nl, RouteNetlinkMessage::DelQueueDiscipline(msg), 0)
     }
 
     /// List the qdiscs of `ifname` (`tc qdisc show dev <ifname>`).
-    /// Works unprivileged. `nl` resolves the interface name to its index.
+    /// Works unprivileged. `nl` resolves the interface name to its index
+    /// and carries the connection the dump is sent on.
     pub fn qdisc_list(&self, nl: &Netlink, ifname: &str) -> Result<Vec<QdiscInfo>> {
         let index = require_index(nl, ifname)?;
-        self.run(async {
-            let mut stream = self.handle.qdisc().get().index(index as i32).execute();
+        nl.run_fut(async {
+            let mut stream = nl.handle().qdisc().get().index(index as i32).execute();
             let mut out = Vec::new();
             while let Some(msg) = stream.next().await {
                 let msg = msg.map_err(|e| Error::Tc(e.to_string()))?;
