@@ -116,10 +116,9 @@ fn net_start(s: &mut Session, _args: &Value) -> Result<Value, String> {
     if !is_root() {
         return Err(requires_root("net_start"));
     }
-    if s.net.is_none() {
-        return Err("no network in session; call net_build(spec) first".to_string());
-    }
     let spec = s.spec.clone().unwrap_or_default();
+    // Session::net_mut() already answers "no network in session; call
+    // net_build(spec) first" when the session is empty.
     s.net_mut()?
         .start()
         .map_err(|e| format!("net_start failed: {e}"))?;
@@ -131,9 +130,6 @@ fn net_start(s: &mut Session, _args: &Value) -> Result<Value, String> {
 fn net_stop(s: &mut Session, _args: &Value) -> Result<Value, String> {
     if !is_root() {
         return Err(requires_root("net_stop"));
-    }
-    if s.net.is_none() {
-        return Err("no network in session; call net_build(spec) first".to_string());
     }
     let spec = s.spec.clone().unwrap_or_default();
     s.net_mut()?
@@ -149,9 +145,7 @@ fn net_release(s: &mut Session, _args: &Value) -> Result<Value, String> {
 }
 
 fn require_running(s: &Session) -> Result<(), String> {
-    if s.net.is_none() {
-        return Err("no network in session; call net_build(spec) first".to_string());
-    }
+    s.net()?; // "no network in session; call net_build(spec) first"
     if !s.started {
         return Err(
             "network is built but not running; call net_start first (net_start requires root)"
@@ -235,7 +229,7 @@ pub fn registry() -> Vec<Tool> {
         },
         Tool {
             name: "topo_plan",
-            description: "Plan a built-in topo spec (e.g. \"single,3\") and return its graph JSON {nodes:[{name,kind,ip}], edges:[{a,b,...}]} as a dry-run model (non-root safe, nothing is created)",
+            description: "Plan a built-in topo spec (e.g. \"single,3\") and return its graph JSON (canonical GraphView shape: {nodes:[{id,label,kind,ip,status,detail?}], edges:[{a,b,status,label,intf1,intf2,port1,port2}]}) as a dry-run model (non-root safe, nothing is created)",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -248,7 +242,7 @@ pub fn registry() -> Vec<Tool> {
         },
         Tool {
             name: "graph",
-            description: "Graph JSON of the network in the session (nodes with pid/status, edges with link status); live status when the net is running",
+            description: "Graph JSON of the network in the session (canonical GraphView shape: nodes with id/kind/ip/status/detail, edges with label + intf/port; plus class/running/built); live status when the net is running",
             input_schema: empty(),
             handler: graph,
         },
@@ -395,5 +389,22 @@ mod tests {
         let mut s = Session::new();
         let err = graph(&mut s, &json!({})).unwrap_err();
         assert!(err.contains("net_build"), "{err}");
+    }
+
+    #[test]
+    fn no_network_error_comes_from_session_accessors() {
+        // the single source of the "no network in session" message is
+        // Session::net()/net_mut() — the handlers no longer duplicate it
+        let mut s = Session::new();
+        let want = "no network in session; call net_build(spec) first";
+        assert_eq!(graph(&mut s, &json!({})).unwrap_err(), want);
+        assert_eq!(links(&mut s, &json!({})).unwrap_err(), want);
+        assert_eq!(dump(&mut s, &json!({})).unwrap_err(), want);
+        assert_eq!(pingall(&mut s, &json!({})).unwrap_err(), want);
+        assert_eq!(
+            ping(&mut s, &json!({"a": "h1", "b": "h2"})).unwrap_err(),
+            want
+        );
+        assert_eq!(s.net_mut().unwrap_err(), want);
     }
 }

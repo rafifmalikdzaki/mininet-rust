@@ -8,7 +8,6 @@ license.workspace = true
 [dependencies]
 mn-net = { path = "../net" }
 mn-topo = { path = "../topo" }
-mn-node = { path = "../node" }
 mn-link = { path = "../link" }
 mn-util = { path = "../util" }
 serde = { version = "1", features = ["derive"] }

@@ -116,11 +116,18 @@ impl CellBuffer for RatBuf<'_> {
         };
         cell.set_symbol(&ch.to_string());
         cell.set_fg(map_color(style.fg));
-        if let Some(bg) = style.bg {
-            cell.set_bg(map_color(bg));
-        }
+        // bg and modifier must be written on EVERY set, not only when
+        // set: ratatui reuses the frame buffer between frames and
+        // `render_frame` starts with `clear()`, which redraws every cell
+        // with `Style::default()` (bg None, bold false). Skipping the
+        // writes here would leave the previous frame's bg/BOLD stuck on
+        // the cell. `StringGrid` gets this for free by replacing the
+        // whole cell.
+        cell.set_bg(map_color(style.bg.unwrap_or(Color::Default)));
         if style.bold {
             cell.modifier.insert(Modifier::BOLD);
+        } else {
+            cell.modifier.remove(Modifier::BOLD);
         }
     }
 }
@@ -137,5 +144,133 @@ fn map_color(c: Color) -> RatColor {
         Color::Cyan => RatColor::Cyan,
         Color::Gray => RatColor::Gray,
         Color::White => RatColor::White,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mn_tui::{render_frame, Frame, GraphView, Layout, StringGrid, View};
+
+    fn dry_graph() -> GraphView {
+        let net = mn_net::Mininet::dry_run(
+            "single,3",
+            mn_net::MininetOptions {
+                controller: None,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        GraphView::from_net(&net, false)
+    }
+
+    fn frame<'a>(
+        graph: &'a GraphView,
+        layout: &'a Layout,
+        view: &'a View,
+        selected: Option<&'a str>,
+        show_detail: bool,
+        status: &'a str,
+    ) -> Frame<'a> {
+        Frame {
+            graph,
+            layout,
+            view,
+            selected,
+            show_detail,
+            title: "test title",
+            status,
+            footer: "test footer",
+        }
+    }
+
+    /// Direct check of the fix: after `set()` with bg+BOLD, `clear()` (the
+    /// default trait method `render_frame` calls each frame) must reset
+    /// symbol, fg, bg AND the BOLD modifier on the ratatui cell.
+    #[test]
+    fn set_then_clear_resets_bg_and_bold() {
+        let area = Rect::new(0, 0, 3, 1);
+        let mut rbuf = Buffer::empty(area);
+        {
+            let mut rb = RatBuf {
+                buf: &mut rbuf,
+                area,
+            };
+            rb.set(
+                1,
+                0,
+                'x',
+                Style {
+                    fg: Color::White,
+                    bg: Some(Color::Red),
+                    bold: true,
+                },
+            );
+        }
+        {
+            let mut rb = RatBuf {
+                buf: &mut rbuf,
+                area,
+            };
+            rb.clear();
+        }
+        let c = rbuf.cell((1, 0)).expect("in area");
+        assert_eq!(c.symbol(), " ");
+        assert_eq!(c.fg, RatColor::Reset);
+        assert_eq!(c.bg, RatColor::Reset);
+        assert!(!c.modifier.contains(Modifier::BOLD));
+    }
+
+    /// Headless-vs-ratbuf consistency: render two frames (the first with
+    /// a selection + detail pane, the second without) into the SAME
+    /// ratatui buffer, then compare every cell (symbol, fg, bg, bold)
+    /// against a `StringGrid` rendered with only the second frame. With
+    /// conditional bg/modifier writes the stale styled cells of frame A
+    /// would leak into frame B and this comparison would fail.
+    #[test]
+    fn ratbuf_matches_string_grid_cell_for_cell_across_frames() {
+        let graph = dry_graph();
+        let layout = Layout::compute(&graph);
+        let (w, h) = (44usize, 14usize);
+        let view = View::new(w, h);
+        let area = Rect::new(0, 0, w as u16, h as u16);
+        let mut rbuf = Buffer::empty(area);
+        {
+            let mut rb = RatBuf {
+                buf: &mut rbuf,
+                area,
+            };
+            render_frame(
+                &mut rb,
+                &frame(&graph, &layout, &view, Some("h1"), true, "A"),
+            );
+        }
+        {
+            let mut rb = RatBuf {
+                buf: &mut rbuf,
+                area,
+            };
+            render_frame(&mut rb, &frame(&graph, &layout, &view, None, false, "B"));
+        }
+        let mut grid = StringGrid::new(w, h);
+        render_frame(&mut grid, &frame(&graph, &layout, &view, None, false, "B"));
+        for y in 0..h {
+            for x in 0..w {
+                let want = grid.cell_at(x, y);
+                let got = rbuf.cell((x as u16, y as u16)).expect("in area");
+                assert_eq!(got.symbol(), want.ch.to_string(), "symbol at ({x},{y})");
+                assert_eq!(got.fg, map_color(want.style.fg), "fg at ({x},{y})");
+                assert_eq!(
+                    got.bg,
+                    map_color(want.style.bg.unwrap_or(Color::Default)),
+                    "bg at ({x},{y})"
+                );
+                assert_eq!(
+                    got.modifier.contains(Modifier::BOLD),
+                    want.style.bold,
+                    "bold at ({x},{y})"
+                );
+            }
+        }
     }
 }

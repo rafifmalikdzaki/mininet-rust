@@ -268,6 +268,10 @@ mod tests {
             b: b.to_string(),
             status: EdgeStatus::Planned,
             label: format!("{a}<->{b}"),
+            intf1: None,
+            intf2: None,
+            port1: None,
+            port2: None,
         }
     }
 

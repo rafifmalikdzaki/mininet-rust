@@ -14,8 +14,11 @@
 //!   `run(reader, writer)` so tests drive it with in-memory pipes.
 //! - [`session`]: [`Session`] — per-connection state holding the optional
 //!   [`mn_net::Mininet`] built via mn-net's dry-run path (non-root safe).
-//! - [`graph`]: the graph JSON shape (`{nodes:[{name,kind,ip,...}],
-//!   edges:[{a,b,...}]}`) shared by `topo_plan`/`graph`/`net_build`.
+//! - [`graph`]: the graph JSON shared by `topo_plan`/`graph`/`net_build`
+//!   — the canonical [`mn_tui::GraphView`] shape (`nodes:[{id,label,kind,
+//!   ip,status,detail?}], edges:[{a,b,status,label,intf1,intf2,port1,
+//!   port2}]`, lowercase kind/status) plus session-level `class`/`running`/
+//!   `built` fields.
 //! - [`tools`]: the tool registry (name → description + inputSchema +
 //!   handler) and the twelve tools: `topo_list`, `topo_plan`, `graph`,
 //!   `net_build`, `net_start`, `net_stop`, `net_release`, `pingall`,

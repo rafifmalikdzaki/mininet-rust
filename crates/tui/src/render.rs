@@ -628,6 +628,10 @@ mod tests {
                 b: "h2".to_string(),
                 status: EdgeStatus::Planned,
                 label: "h1-eth0<->h2-eth0".to_string(),
+                intf1: Some("h1-eth0".to_string()),
+                intf2: Some("h2-eth0".to_string()),
+                port1: Some(0),
+                port2: Some(0),
             }],
         };
         let layout = Layout::compute(&graph);

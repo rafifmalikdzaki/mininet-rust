@@ -12,9 +12,10 @@ path = "src/main.rs"
 [dependencies]
 mn-tui = { path = "../../crates/tui" }
 mn-net = { path = "../../crates/net" }
-mn-topo = { path = "../../crates/topo" }
-mn-util = { path = "../../crates/util" }
 clap = { version = "4", features = ["derive"] }
 ratatui = "0.30"
 crossterm = "0.29"
+
+[dev-dependencies]
+# only the integration tests (tests/cli.rs) parse the --json output
 serde_json = "1"

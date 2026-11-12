@@ -150,7 +150,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .map(|n| n["name"].as_str().unwrap())
+            .map(|n| n["id"].as_str().unwrap())
             .collect();
         assert_eq!(names, vec!["h1", "h2", "s1"]);
     }

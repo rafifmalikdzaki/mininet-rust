@@ -61,9 +61,13 @@
 //!   `result + '\n'`, else `repr(result) + '\n'`) and the
 //!   `output(str(e) + '\n')` exception path are reproduced by the wrapper,
 //!   byte-exact vs the live-captured Python CLI (goldens). The `py`/`px`
-//!   locals dict persists across calls within a session via a pickled
-//!   state file (`px x = 5` then `px print(x)` → `5`, like Python's
-//!   `self.locals`). `Node.cmd()` inside the sandbox runs `mnexec -da <pid>
+//!   locals dict persists across calls within a session via a **JSON**
+//!   state file inside a private 0700 per-session directory under the
+//!   temp dir (`px x = 5` then `px print(x)` → `5`, like Python's
+//!   `self.locals`). JSON (never pickle) + a `create_dir`-created 0700
+//!   dir mean a tampered state file cannot execute code and cannot be
+//!   planted by another user (security review fix). `Node.cmd()` inside
+//!   the sandbox runs `mnexec -da <pid>
 //!   sh -c ...` on a started net; on a non-started net it emits Python's
 //!   `(<node> exited - ignoring cmd(...))` warn line and returns None.
 //! - `xterm`/`gterm`/`x` spawn real terminals/tunnels via
@@ -136,7 +140,9 @@ pub const PROMPT: &str = "mininet> ";
 /// `isatty(stdin)`, `display` is the resolved `$DISPLAY` (None = unset —
 /// threaded explicitly so tests are deterministic), `terms` holds spawned
 /// terminal/tunnel children (Python's `mn.terms`), and `py_state` is the
-/// pickled `py`/`px` locals state file.
+/// private per-session state **directory** (0700, created with O_EXCL —
+/// see [`py_state_dir`]) holding the JSON `py`/`px` locals file
+/// [`PY_STATE_FILE`].
 struct Io<'a> {
     out: &'a mut dyn Write,
     err: &'a mut dyn Write,
@@ -218,10 +224,16 @@ pub fn run_with_io(
             break;
         }
     }
-    if let Some(state) = io.py_state.take() {
-        let _ = std::fs::remove_file(state);
-    }
+    drop_py_state(&mut io);
     0
+}
+
+/// Remove the private `py`/`px` state dir (and the JSON state file inside
+/// it) when the loop ends.
+fn drop_py_state(io: &mut Io) {
+    if let Some(dir) = io.py_state.take() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -942,29 +954,28 @@ fn do_px(net: &Mininet, arg: &str, io: &mut Io) {
 
 /// Run `line` in a `python3 -c` wrapper (`PY_WRAPPER`) with mode `py`
 /// (eval) or `px` (exec). `MN_NET_JSON` carries the net summary,
-/// `MN_PY_LINE` the user line, `MN_PY_STATE` the pickled persistent locals
-/// file (created lazily on first use, removed when the loop ends).
+/// `MN_PY_LINE` the user line, and `MN_PY_STATE` the JSON persistent
+/// locals file — `py_state_dir().join(PY_STATE_FILE)` inside the private
+/// 0700 per-session state dir, created lazily on first use and removed
+/// when the loop ends ([`drop_py_state`]). If the dir cannot be created,
+/// the wrapper simply runs without persistent state.
 fn run_py(net: &Mininet, line: &str, eval_mode: bool, io: &mut Io) {
     if io.py_state.is_none() {
-        io.py_state = Some(std::env::temp_dir().join(format!(
-                "mn-repl-py-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_nanos())
-                    .unwrap_or(0)
-            )));
+        io.py_state = py_state_dir();
     }
-    let state = io.py_state.clone().expect("just set");
+    let state = io.py_state.as_ref().map(|dir| dir.join(PY_STATE_FILE));
     let summary = net_summary_json(net);
     let mode = if eval_mode { "py" } else { "px" };
-    let spawned = std::process::Command::new("python3")
-        .arg("-c")
+    let mut cmd = std::process::Command::new("python3");
+    cmd.arg("-c")
         .arg(PY_WRAPPER)
         .arg(mode)
         .env("MN_PY_LINE", line)
-        .env("MN_NET_JSON", &summary)
-        .env("MN_PY_STATE", &state)
+        .env("MN_NET_JSON", &summary);
+    if let Some(state) = &state {
+        cmd.env("MN_PY_STATE", state);
+    }
+    let spawned = cmd
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -987,18 +998,47 @@ fn run_py(net: &Mininet, line: &str, eval_mode: bool, io: &mut Io) {
     }
 }
 
+/// Name of the JSON locals file inside the per-session state dir.
+const PY_STATE_FILE: &str = "state.json";
+
+/// Create the private per-session `py`/`px` state directory under the
+/// system temp dir: `mn-repl-py-<pid>-<nanos>` with mode **0700**.
+///
+/// Security (design-review fix): the wrapper loads the state as **JSON**
+/// (never pickle — `pickle.load` on an attacker-controlled file is
+/// arbitrary code execution), and the directory is created with
+/// `DirBuilder::create`, which is O_EXCL (fails if the path already
+/// exists), so a name collision can never point the repl at a
+/// pre-existing, possibly attacker-planted directory; mode 0700 keeps
+/// every other user out. Returns `None` if creation fails — the wrapper
+/// then runs without persistent state.
+fn py_state_dir() -> Option<PathBuf> {
+    use std::os::unix::fs::DirBuilderExt;
+    let dir = std::env::temp_dir().join(format!(
+        "mn-repl-py-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::DirBuilder::new().mode(0o700).create(&dir).ok()?;
+    Some(dir)
+}
+
 /// The `python3 -c` wrapper for `py`/`px`. argv[1] is the mode (`py`/`px`);
 /// `MN_PY_LINE` is the user line, `MN_NET_JSON` the net summary, and
-/// `MN_PY_STATE` (optional) a pickle file holding the persistent locals
+/// `MN_PY_STATE` (optional) a **JSON** file holding the persistent locals
 /// dict across `py`/`px` calls (Python's `CLI.locals`, which is seeded
-/// with `net` + node names on every `getLocals()`).
+/// with `net` + node names on every `getLocals()`). JSON cannot carry
+/// code, so loading the state file is safe even if it were tampered with
+/// (the repl additionally keeps it in a private 0700 dir, see
+/// [`py_state_dir`]).
 const PY_WRAPPER: &str = r#"
-import json, os, pickle, sys
+import json, os, sys
 _mode = sys.argv[1]
 _line = os.environ["MN_PY_LINE"]
 _state = os.environ.get("MN_PY_STATE")
-# Shim classes must be defined before the pickled state is loaded (pickle
-# resolves them as __main__._Node / __main__._Net).
 class _Node:
     def __init__(self, d):
         self.name = d["name"]; self.kind = d["kind"]; self.pid = d["pid"]
@@ -1046,15 +1086,18 @@ class _Net:
         return list(self._nodes)
     def values(self):
         return list(self._nodes.values())
+# Persistent locals: a plain-JSON object in MN_PY_STATE (inside the
+# repl's private 0700 state dir). json.load can only produce JSON
+# values — it never executes code the way Python's pickle module does.
 _ns = {}
 if _state and os.path.exists(_state):
     try:
-        with open(_state, "rb") as _f:
-            _ns = pickle.load(_f)
-    except Exception:
+        with open(_state, "r", encoding="utf-8") as _f:
+            _loaded = json.load(_f)
+        if isinstance(_loaded, dict):
+            _ns.update(_loaded)
+    except (OSError, ValueError):
         _ns = {}
-if not isinstance(_ns, dict):
-    _ns = {}
 _summary = json.loads(os.environ["MN_NET_JSON"])
 net = _Net(_summary["nodes"], _summary["hosts"], _summary["switches"],
            _summary["controllers"])
@@ -1076,10 +1119,23 @@ try:
 except Exception as _e:
     sys.stdout.write(str(_e) + "\n")
 if _state:
+    # Persist only JSON-serializable, non-shim values: the _Net/_Node
+    # shims are re-created from MN_NET_JSON on every call, and values
+    # json cannot represent (functions, class instances) are skipped —
+    # they simply do not persist across py/px calls.
+    _persist = {}
+    for _k, _v in _ns.items():
+        if isinstance(_v, (_Node, _Net)):
+            continue
+        try:
+            json.dumps(_v)
+        except (TypeError, ValueError):
+            continue
+        _persist[_k] = _v
     try:
-        with open(_state, "wb") as _f:
-            pickle.dump(_ns, _f)
-    except Exception:
+        with open(_state, "w", encoding="utf-8") as _f:
+            json.dump(_persist, _f)
+    except OSError:
         pass
 "#;
 
@@ -1817,5 +1873,201 @@ However, starting up an xterm/gterm is generally better:\n  mininet> xterm h2\n\
         let r = parse_ping_full(out, &mut err);
         assert_eq!(r, (1, 1, 0.042, 0.042, 0.042, 0.0));
         assert!(err.is_empty());
+    }
+
+    // -----------------------------------------------------------------
+    // py/px persistent state (security: JSON in a private 0700 dir,
+    // never pickle in shared /tmp)
+    // -----------------------------------------------------------------
+
+    fn dry_net() -> Mininet {
+        Mininet::dry_run(
+            "single,3",
+            mn_net::MininetOptions {
+                controller: None,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
+    fn python3_available() -> bool {
+        std::process::Command::new("python3")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn test_io<'a>(out: &'a mut Vec<u8>, err: &'a mut Vec<u8>, state: Option<PathBuf>) -> Io<'a> {
+        Io {
+            out,
+            err,
+            tty: false,
+            display: None,
+            terms: Vec::new(),
+            py_state: state,
+        }
+    }
+
+    /// Serializes the py-state tests: they all create/remove
+    /// `mn-repl-py-<pid>-*` dirs in the shared temp dir, and the
+    /// run_with_io cleanup test scans that dir, so they must not overlap.
+    static PY_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn state_dir_names() -> Vec<String> {
+        let prefix = format!("mn-repl-py-{}-", std::process::id());
+        std::fs::read_dir(std::env::temp_dir())
+            .map(|rd| {
+                rd.filter_map(|e| e.ok())
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .filter(|n| n.starts_with(&prefix))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn py_state_dir_is_private_and_exclusive() {
+        let _g = PY_STATE_LOCK.lock().unwrap();
+        let dir = py_state_dir().expect("temp dir is writable here");
+        let meta = std::fs::metadata(&dir).unwrap();
+        assert!(meta.is_dir());
+        assert!(dir
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("mn-repl-py-"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                meta.permissions().mode() & 0o777,
+                0o700,
+                "state dir must be 0700 (other users must not read/plant it)"
+            );
+        }
+        // O_EXCL: creating the same path again must fail, so a name
+        // collision can never clobber/point at an existing directory.
+        use std::os::unix::fs::DirBuilderExt;
+        let again = std::fs::DirBuilder::new().mode(0o700).create(&dir);
+        assert!(again.is_err(), "create on an existing dir must fail");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn drop_py_state_removes_the_private_dir() {
+        let _g = PY_STATE_LOCK.lock().unwrap();
+        let dir = py_state_dir().unwrap();
+        std::fs::write(dir.join(PY_STATE_FILE), "{}").unwrap();
+        let mut out: Vec<u8> = Vec::new();
+        let mut err: Vec<u8> = Vec::new();
+        let mut io = test_io(&mut out, &mut err, Some(dir.clone()));
+        drop_py_state(&mut io);
+        assert!(io.py_state.is_none());
+        assert!(!dir.exists(), "state dir must be removed with the loop");
+    }
+
+    #[test]
+    fn py_px_persist_locals_through_json_state_file() {
+        if !python3_available() {
+            return; // same assumption as the py/px golden tests
+        }
+        let _g = PY_STATE_LOCK.lock().unwrap();
+        let net = dry_net();
+        let dir = py_state_dir().unwrap();
+        let state = dir.join(PY_STATE_FILE);
+        let mut out: Vec<u8> = Vec::new();
+        let mut err: Vec<u8> = Vec::new();
+        {
+            let mut io = test_io(&mut out, &mut err, Some(dir.clone()));
+            run_py(&net, "x = 5", false, &mut io); // px x = 5
+            run_py(&net, "print(x)", false, &mut io); // px print(x) -> 5
+            run_py(&net, "x + 1", true, &mut io); // py x + 1 -> 6
+        }
+        let out = String::from_utf8(out).unwrap();
+        assert_eq!(out, "5\n6\n", "err: {}", String::from_utf8_lossy(&err));
+        // the state file is plain JSON, not a pickle
+        let content = std::fs::read_to_string(&state).unwrap();
+        assert!(
+            content.trim_start().starts_with('{'),
+            "state must be a JSON object, got {content:?}"
+        );
+        assert!(content.contains("\"x\": 5"), "state: {content:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn py_state_file_is_json_and_never_loads_pickle() {
+        if !python3_available() {
+            return;
+        }
+        let _g = PY_STATE_LOCK.lock().unwrap();
+        // the wrapper must not import or call pickle anymore
+        for needle in ["import pickle", "pickle.load", "pickle.dump"] {
+            assert!(!PY_WRAPPER.contains(needle), "wrapper still uses {needle}");
+        }
+        let net = dry_net();
+        let dir = py_state_dir().unwrap();
+        let state = dir.join(PY_STATE_FILE);
+        // attacker-planted pickle payload: under pickle.load this runs
+        // `echo pwned` (os.system); under json.load it is just invalid JSON
+        std::fs::write(&state, b"cos\nsystem\n(S'echo pwned'\ntR.").unwrap();
+        let mut out: Vec<u8> = Vec::new();
+        let mut err: Vec<u8> = Vec::new();
+        {
+            let mut io = test_io(&mut out, &mut err, Some(dir.clone()));
+            run_py(&net, "print('safe')", false, &mut io);
+        }
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.contains("safe"),
+            "out: {out:?} err: {}",
+            String::from_utf8_lossy(&err)
+        );
+        assert!(
+            !out.contains("pwned"),
+            "pickle payload executed! out: {out:?}"
+        );
+        // ... and the file is rewritten as plain JSON
+        let content = std::fs::read_to_string(&state).unwrap();
+        assert!(
+            content.trim_start().starts_with('{'),
+            "state rewritten as JSON, got {content:?}"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn run_with_io_py_px_session_and_cleanup() {
+        if !python3_available() {
+            return;
+        }
+        let _g = PY_STATE_LOCK.lock().unwrap();
+        let before = state_dir_names();
+        let mut net = dry_net();
+        let script = "px x = 5\npy x\npx print(x)\nexit\n";
+        let mut stdin = std::io::Cursor::new(script.as_bytes().to_vec());
+        let mut out: Vec<u8> = Vec::new();
+        let mut err: Vec<u8> = Vec::new();
+        let code = run_with_io(&mut net, &mut stdin, &mut out, &mut err, false, None);
+        assert_eq!(code, 0);
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "5\n5\n",
+            "err: {}",
+            String::from_utf8_lossy(&err)
+        );
+        // the loop removed its private state dir on exit: no leftover
+        // mn-repl-py-<our pid>-* entry that did not exist before the run
+        let new_leftovers: Vec<String> = state_dir_names()
+            .into_iter()
+            .filter(|n| !before.contains(n))
+            .collect();
+        assert!(
+            new_leftovers.is_empty(),
+            "state dirs left behind after exit: {new_leftovers:?}"
+        );
     }
 }

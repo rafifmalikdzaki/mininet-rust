@@ -14,8 +14,12 @@
 //!   graph snapshot built from a dry-run plan ([`GraphView::from_topo`] /
 //!   [`GraphView::from_net`] with `live=false`) or from a live `mn-net`
 //!   [`Mininet`] (`live=true`: link status from the link/intf model, node
-//!   status from pids). `GraphView` serializes to JSON (`--json`, and the
-//!   `topo_plan`/`graph` payloads of the MCP server later).
+//!   status from pids). `GraphView` serializes to JSON — this is the
+//!   **canonical graph shape**: `mn-tui --json` emits it, and the MCP
+//!   server (`crates/mcp`, `mn_tui::GraphView` reused in
+//!   `crates/mcp/src/graph.rs`) serves it as the `topo_plan`/`graph`/
+//!   `net_build` payloads, with lowercase enum values matching the
+//!   `fixtures/topo_*.txt` outputs.
 //! - [`layout`]: deterministic layered layout (multi-source BFS from
 //!   switches/controllers, hosts around them, natural-sorted within a
 //!   layer) plus the pan/zoom [`View`] transform and hit-testing math.

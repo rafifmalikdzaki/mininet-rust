@@ -1,77 +1,48 @@
 //! Graph JSON builders shared by the `topo_plan` / `graph` / `net_build`
 //! tools.
 //!
-//! The shape (matching the `fixtures/topo_*.txt` characterization outputs):
+//! The canonical graph shape is [`mn_tui::GraphView`] — the same type
+//! `mn-tui --json` emits (lowercase `kind`/`status` values matching the
+//! `fixtures/topo_*.txt` characterization outputs, edges carrying both
+//! the `label` and the fixture-matching `intf1`/`intf2`/`port1`/`port2`
+//! fields):
 //!
 //! ```json
 //! {
 //!   "spec": "single,3", "class": "SingleSwitchTopo",
-//!   "running": false, "built": true,
-//!   "nodes": [{"name": "h1", "kind": "host", "ip": "10.0.0.1",
-//!              "pid": null, "status": "down"}, ...],
-//!   "edges": [{"a": "h1", "b": "s1", "intf1": "h1-eth0", "intf2": "s1-eth1",
-//!              "port1": 0, "port2": 1, "status": ["MISSING", "MISSING"]}, ...]
+//!   "running": false, "built": true, "live": false,
+//!   "nodes": [{"id": "h1", "label": "h1", "kind": "host", "ip": "10.0.0.1",
+//!              "status": "planned", "detail": {"repr": "...", "pid": null,
+//!              "intfs": [...], "ips": [...]}}, ...],
+//!   "edges": [{"a": "h1", "b": "s1", "status": "planned",
+//!              "label": "h1-eth0<->s1-eth1",
+//!              "intf1": "h1-eth0", "intf2": "s1-eth1",
+//!              "port1": 0, "port2": 1}, ...]
 //! }
 //! ```
+//!
+//! On top of the [`GraphView`] fields, the session-level `class` /
+//! `running` / `built` (and `planned` for `topo_plan`) are added.
 
 use mn_net::{Mininet, MininetOptions};
-use serde_json::{json, Value};
+use mn_tui::GraphView;
+use serde_json::Value;
 
-/// Node kind tag for the graph JSON (`host`/`switch`/`controller`).
-fn kind_of(net: &Mininet, name: &str) -> &'static str {
-    if net.hosts.contains(name) {
-        "host"
-    } else if net.switches.contains(name) {
-        "switch"
-    } else if net.controllers.contains(name) {
-        "controller"
-    } else {
-        "node"
-    }
-}
-
-/// One node entry: name/kind/ip from the model, pid + status live.
-fn node_json(net: &Mininet, name: &str) -> Value {
-    let node = net.get(name).expect("keys() and nameToNode in sync").node();
-    let pid = node.pid();
-    let status = if pid.is_some() { "running" } else { "down" };
-    json!({
-        "name": name,
-        "kind": kind_of(net, name),
-        "ip": node.ip(None).map(|a| a.to_string()),
-        "pid": pid,
-        "status": status,
-    })
-}
-
-/// The full graph JSON for a built [`Mininet`] model. `running` is the
-/// session's started flag (live kernel state only exists after
-/// [`Mininet::start`], which needs root).
+/// The full graph JSON for a built [`Mininet`] model: the canonical
+/// [`GraphView`] snapshot plus the session-level `class`/`running`/
+/// `built` fields. `running` is the session's started flag and doubles
+/// as `live` (live kernel state only exists after [`Mininet::start`],
+/// which needs root).
 pub fn net_graph(net: &Mininet, running: bool) -> Value {
-    let nodes: Vec<Value> = net.keys().iter().map(|n| node_json(net, n)).collect();
-    let edges: Vec<Value> = net
-        .links
-        .iter()
-        .map(|l| {
-            json!({
-                "a": l.node1,
-                "b": l.node2,
-                "intf1": l.intf1.name,
-                "intf2": l.intf2.name,
-                "port1": l.intf1.port,
-                "port2": l.intf2.port,
-                "status": [l.intf1.status.to_string(), l.intf2.status.to_string()],
-            })
-        })
-        .collect();
-    json!({
-        "spec": net.topo_spec.as_deref(),
-        "class": net.topo_class.as_deref(),
-        "running": running,
-        "built": net.built,
-        "nodes": nodes,
-        "edges": edges,
-    })
+    let graph = GraphView::from_net(net, running);
+    let mut v = serde_json::to_value(&graph).expect("GraphView is plain JSON data");
+    v["class"] = match &net.topo_class {
+        Some(c) => Value::String(c.clone()),
+        None => Value::Null,
+    };
+    v["running"] = Value::Bool(running);
+    v["built"] = Value::Bool(net.built);
+    v
 }
 
 /// `topo_plan`: dry-run graph JSON for a built-in topo spec (`single,3`,
@@ -92,6 +63,7 @@ pub fn plan_graph(spec: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn plan_graph_single3_matches_fixture_structure() {
@@ -99,14 +71,19 @@ mod tests {
         assert_eq!(g["spec"], "single,3");
         assert_eq!(g["class"], "SingleSwitchTopo");
         assert_eq!(g["planned"], true);
-        let nodes: Vec<(String, String, Value)> = g["nodes"]
+        assert_eq!(g["running"], false);
+        assert_eq!(g["built"], true);
+        assert_eq!(g["live"], false);
+        // canonical GraphView shape: nodes keyed by "id", lowercase kinds
+        let nodes: Vec<(String, String, String, Value)> = g["nodes"]
             .as_array()
             .unwrap()
             .iter()
             .map(|n| {
                 (
-                    n["name"].as_str().unwrap().to_string(),
+                    n["id"].as_str().unwrap().to_string(),
                     n["kind"].as_str().unwrap().to_string(),
+                    n["status"].as_str().unwrap().to_string(),
                     n["ip"].clone(),
                 )
             })
@@ -114,13 +91,34 @@ mod tests {
         assert_eq!(
             nodes,
             vec![
-                ("h1".to_string(), "host".to_string(), json!("10.0.0.1")),
-                ("h2".to_string(), "host".to_string(), json!("10.0.0.2")),
-                ("h3".to_string(), "host".to_string(), json!("10.0.0.3")),
-                ("s1".to_string(), "switch".to_string(), Value::Null),
+                (
+                    "h1".to_string(),
+                    "host".to_string(),
+                    "planned".to_string(),
+                    json!("10.0.0.1")
+                ),
+                (
+                    "h2".to_string(),
+                    "host".to_string(),
+                    "planned".to_string(),
+                    json!("10.0.0.2")
+                ),
+                (
+                    "h3".to_string(),
+                    "host".to_string(),
+                    "planned".to_string(),
+                    json!("10.0.0.3")
+                ),
+                (
+                    "s1".to_string(),
+                    "switch".to_string(),
+                    "planned".to_string(),
+                    Value::Null
+                ),
             ]
         );
-        let edges: Vec<(String, String, i64, i64)> = g["edges"]
+        // edges: a/b + fixture-matching intf/port fields + label + status
+        let edges: Vec<(String, String, String, String, i64, i64)> = g["edges"]
             .as_array()
             .unwrap()
             .iter()
@@ -128,6 +126,8 @@ mod tests {
                 (
                     e["a"].as_str().unwrap().to_string(),
                     e["b"].as_str().unwrap().to_string(),
+                    e["intf1"].as_str().unwrap().to_string(),
+                    e["intf2"].as_str().unwrap().to_string(),
                     e["port1"].as_i64().unwrap(),
                     e["port2"].as_i64().unwrap(),
                 )
@@ -136,11 +136,35 @@ mod tests {
         assert_eq!(
             edges,
             vec![
-                ("h1".to_string(), "s1".to_string(), 0, 1),
-                ("h2".to_string(), "s1".to_string(), 0, 2),
-                ("h3".to_string(), "s1".to_string(), 0, 3),
+                (
+                    "h1".to_string(),
+                    "s1".to_string(),
+                    "h1-eth0".to_string(),
+                    "s1-eth1".to_string(),
+                    0,
+                    1
+                ),
+                (
+                    "h2".to_string(),
+                    "s1".to_string(),
+                    "h2-eth0".to_string(),
+                    "s1-eth2".to_string(),
+                    0,
+                    2
+                ),
+                (
+                    "h3".to_string(),
+                    "s1".to_string(),
+                    "h3-eth0".to_string(),
+                    "s1-eth3".to_string(),
+                    0,
+                    3
+                ),
             ]
         );
+        let e0 = &g["edges"][0];
+        assert_eq!(e0["label"], "h1-eth0<->s1-eth1");
+        assert_eq!(e0["status"], "planned");
     }
 
     #[test]

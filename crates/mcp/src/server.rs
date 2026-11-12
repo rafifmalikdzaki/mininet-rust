@@ -109,13 +109,17 @@ impl Server {
                 "Invalid Request: \"method\" must be a string",
             ));
         };
-        // Notification: never answered, even on error (JSON-RPC 2.0).
-        // `notifications/initialized` is a no-op; anything else is ignored.
+        // Notification no-op: a message without an "id" member is a
+        // notification and is NEVER answered, even on error (JSON-RPC
+        // 2.0). MCP's "notifications/initialized" handshake is explicitly
+        // no-oped HERE, before the request handling below — the old code
+        // did `let id = id?;` first and then had a dedicated
+        // "notifications/initialized" match arm that was unreachable
+        // (the `?` had already returned None for it).
         let id = id?;
         let params = obj.get("params").cloned().unwrap_or_else(|| json!({}));
         Some(match method {
             "initialize" => result_response(id, self.initialize_result()),
-            "notifications/initialized" => result_response(id, json!({})),
             "ping" => result_response(id, json!({})),
             "tools/list" => result_response(id, self.tools_list_result()),
             "tools/call" => self.tools_call(id, &params),

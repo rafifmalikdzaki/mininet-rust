@@ -90,6 +90,12 @@ fn graph_from_plan_matches_topo_single3_fixture() {
     assert_eq!(g.edge("h1", "s1").unwrap().label, "h1-eth0<->s1-eth1");
     assert_eq!(g.edge("h2", "s1").unwrap().label, "h2-eth0<->s1-eth2");
     assert_eq!(g.edge("h3", "s1").unwrap().label, "h3-eth0<->s1-eth3");
+    // ... and the fixture-matching intf/port fields sit next to the label
+    let e = g.edge("h1", "s1").unwrap();
+    assert_eq!(e.intf1.as_deref(), Some("h1-eth0"));
+    assert_eq!(e.intf2.as_deref(), Some("s1-eth1"));
+    assert_eq!(e.port1, Some(0));
+    assert_eq!(e.port2, Some(1));
     assert!(g.edges.iter().all(|e| e.status == EdgeStatus::Planned));
     assert_eq!(g.spec.as_deref(), Some("single,3"));
     assert!(!g.live);
@@ -143,17 +149,21 @@ fn json_export_parses_and_roundtrips() {
     let edges = v["edges"].as_array().unwrap();
     assert_eq!(edges.len(), 3);
     let s1 = nodes.iter().find(|n| n["id"] == "s1").unwrap();
-    assert_eq!(s1["kind"], "Switch");
-    assert_eq!(s1["status"], "Planned");
+    assert_eq!(s1["kind"], "switch"); // canonical shape: lowercase, like the fixtures
+    assert_eq!(s1["status"], "planned");
     let h1 = nodes.iter().find(|n| n["id"] == "h1").unwrap();
-    assert_eq!(h1["kind"], "Host");
+    assert_eq!(h1["kind"], "host");
     assert_eq!(h1["ip"], "10.0.0.1");
     let e = edges
         .iter()
         .find(|e| e["a"] == "h1" && e["b"] == "s1")
         .unwrap();
-    assert_eq!(e["status"], "Planned");
+    assert_eq!(e["status"], "planned");
     assert_eq!(e["label"], "h1-eth0<->s1-eth1");
+    assert_eq!(e["intf1"], "h1-eth0");
+    assert_eq!(e["intf2"], "s1-eth1");
+    assert_eq!(e["port1"], 0);
+    assert_eq!(e["port2"], 1);
     // roundtrip
     let back = GraphView::from_json(&s).unwrap();
     assert_eq!(back, g);

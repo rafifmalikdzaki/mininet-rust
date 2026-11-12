@@ -85,6 +85,21 @@ fn notifications_and_ping() {
 }
 
 #[test]
+fn notifications_are_never_answered_even_unknown_methods() {
+    let mut server = Server::new();
+    let input = concat!(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n",
+        "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}\n",
+        // unknown method WITHOUT id is still a notification: no reply
+        "{\"jsonrpc\":\"2.0\",\"method\":\"no/such\"}\n",
+        "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\"}\n",
+    );
+    let (msgs, _) = drive(&mut server, input);
+    assert_eq!(msgs.len(), 1, "only the ping request may be answered");
+    assert_eq!(msgs[0], json!({"jsonrpc": "2.0", "id": 9, "result": {}}));
+}
+
+#[test]
 fn tools_list_contains_all_tools_with_schemas() {
     let mut server = Server::new();
     let input = "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\"}\n";
@@ -128,14 +143,16 @@ fn tools_call_topo_plan_single3_matches_fixture() {
     assert_eq!(g["spec"], "single,3");
     assert_eq!(g["class"], "SingleSwitchTopo");
     // nodes match fixtures/topo_single3.txt: h1..h3 hosts with IPs, s1 switch
-    let nodes: Vec<(String, String, Value)> = g["nodes"]
+    // (canonical GraphView shape: "id" key, lowercase kind/status)
+    let nodes: Vec<(String, String, String, Value)> = g["nodes"]
         .as_array()
         .unwrap()
         .iter()
         .map(|n| {
             (
-                n["name"].as_str().unwrap().to_string(),
+                n["id"].as_str().unwrap().to_string(),
                 n["kind"].as_str().unwrap().to_string(),
+                n["status"].as_str().unwrap().to_string(),
                 n["ip"].clone(),
             )
         })
@@ -143,10 +160,25 @@ fn tools_call_topo_plan_single3_matches_fixture() {
     assert_eq!(
         nodes,
         vec![
-            ("h1".into(), "host".into(), json!("10.0.0.1")),
-            ("h2".into(), "host".into(), json!("10.0.0.2")),
-            ("h3".into(), "host".into(), json!("10.0.0.3")),
-            ("s1".into(), "switch".into(), Value::Null),
+            (
+                "h1".into(),
+                "host".into(),
+                "planned".into(),
+                json!("10.0.0.1")
+            ),
+            (
+                "h2".into(),
+                "host".into(),
+                "planned".into(),
+                json!("10.0.0.2")
+            ),
+            (
+                "h3".into(),
+                "host".into(),
+                "planned".into(),
+                json!("10.0.0.3")
+            ),
+            ("s1".into(), "switch".into(), "planned".into(), Value::Null),
         ]
     );
     // edges match the fixture's links(): hN-eth0 <-> s1-ethN
@@ -263,14 +295,18 @@ fn session_state_across_calls_build_graph_release() {
     assert_eq!(g["running"], false);
     assert_eq!(g["nodes"].as_array().unwrap().len(), 4); // h1..h3, s1 (no c0)
 
-    // graph after build: same nodes, all down (dry-run: pid None)
+    // graph after build: same nodes, all planned (dry-run: pid None in detail)
     let g: Value = serde_json::from_str(&text_of(&msgs[1])).unwrap();
     assert_eq!(g["running"], false);
     for n in g["nodes"].as_array().unwrap() {
-        assert_eq!(n["pid"], Value::Null);
-        assert_eq!(n["status"], "down");
+        assert_eq!(n["detail"]["pid"], Value::Null);
+        assert_eq!(n["status"], "planned");
     }
     assert_eq!(g["edges"].as_array().unwrap().len(), 3);
+    // canonical GraphView fields are present
+    assert_eq!(g["edges"][0]["intf1"], "h1-eth0");
+    assert_eq!(g["edges"][0]["port2"], 1);
+    assert_eq!(g["edges"][0]["label"], "h1-eth0<->s1-eth1");
 
     // dump: exact cli.py format (compare with mn-net's observe tests)
     let dump = text_of(&msgs[2]);
@@ -353,12 +389,13 @@ fn root_live_net_start_pingall_stop_release() {
     assert_eq!(p["ploss"], 0.0, "{}", p["output"]);
     let p: Value = serde_json::from_str(&text_of(&msgs[3])).unwrap();
     assert_eq!(p["ploss"], 0.0);
-    // graph while running: both hosts have pids
+    // graph while running: both hosts are up with pids (in detail)
     let g: Value = serde_json::from_str(&text_of(&msgs[4])).unwrap();
     assert_eq!(g["running"], true);
+    assert_eq!(g["live"], true);
     for n in g["nodes"].as_array().unwrap() {
-        assert_eq!(n["status"], "running", "{n}");
-        assert!(n["pid"].is_number(), "{n}");
+        assert_eq!(n["status"], "up", "{n}");
+        assert!(n["detail"]["pid"].is_number(), "{n}");
     }
     // host_cmd ran inside h1's namespace
     assert!(text_of(&msgs[5]).contains("hello-from-h1"));

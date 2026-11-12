@@ -3,16 +3,25 @@
 //! topology plan ([`GraphView::from_topo`]) or from a live `mn-net`
 //! [`Mininet`] ([`GraphView::from_net`]).
 //!
-//! The JSON shape (`--json` in `apps/mn-tui`, and the `topo_plan`/`graph`
-//! payloads of the MCP server later) is:
+//! The JSON shape is the **canonical graph shape** — the same one the
+//! `mn-tui --json` export emits and the MCP server (`crates/mcp`) reuses
+//! for its `topo_plan`/`graph`/`net_build` payloads (see
+//! `crates/mcp/src/graph.rs`). Enum values serialize lowercase, matching
+//! the `fixtures/topo_*.txt` characterization outputs, and edges keep
+//! the fixture-matching `intf1`/`intf2`/`port1`/`port2` fields next to
+//! the `label`:
 //!
 //! ```json
 //! { "spec": "single,3", "live": false,
-//!   "nodes": [ { "id": "h1", "label": "h1", "kind": "Host",
-//!                "ip": "10.0.0.1", "status": "Planned", "detail": { ... } } ],
-//!   "edges": [ { "a": "h1", "b": "s1", "status": "Planned",
-//!                "label": "h1-eth0<->s1-eth1" } ] }
+//!   "nodes": [ { "id": "h1", "label": "h1", "kind": "host",
+//!                "ip": "10.0.0.1", "status": "planned", "detail": { ... } } ],
+//!   "edges": [ { "a": "h1", "b": "s1", "status": "planned",
+//!                "label": "h1-eth0<->s1-eth1",
+//!                "intf1": "h1-eth0", "intf2": "s1-eth1",
+//!                "port1": 0, "port2": 1 } ] }
 //! ```
+//!
+//! (`detail` is omitted entirely when `None`.)
 
 use mn_link::LinkStatus;
 use mn_net::{link_str, repr_node, Mininet, NodeRef};
@@ -20,7 +29,10 @@ use mn_topo::Topo;
 use serde::{Deserialize, Serialize};
 
 /// Role of a node in the graph (Python `isSwitch` / node class).
+/// Serializes lowercase (`host`/`switch`/`controller`, matching the
+/// fixtures and the MCP graph payloads).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NodeKind {
     /// A host (`h1`, ...).
     Host,
@@ -50,7 +62,9 @@ impl std::fmt::Display for NodeKind {
 /// Liveness of a node: `Up` when its process pid exists (live net), `Down`
 /// when a live net has no pid for it, `Missing` is unused for nodes today
 /// (kept for symmetry with edges), `Planned` in dry-run mode.
+/// Serializes lowercase (`up`/`down`/`missing`/`planned`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum NodeStatus {
     /// Process running (pid known) — green.
     Up,
@@ -81,7 +95,9 @@ impl std::fmt::Display for NodeStatus {
 }
 
 /// Liveness of an edge (a link's two intf ends).
+/// Serializes lowercase (`up`/`down`/`missing`/`planned`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EdgeStatus {
     /// Both ends up — green.
     Up,
@@ -149,7 +165,9 @@ pub struct GNode {
     /// Liveness.
     pub status: NodeStatus,
     /// Detail-pane payload (present when built from a `Mininet`).
-    #[serde(default)]
+    /// Omitted from the JSON entirely when `None` (a plain `default`
+    /// alone would still serialize `null`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<NodeDetail>,
 }
 
@@ -164,6 +182,20 @@ pub struct GEdge {
     pub status: EdgeStatus,
     /// `intf1<->intf2` label (e.g. `h1-eth0<->s1-eth1`).
     pub label: String,
+    /// First endpoint's interface name (`h1-eth0`) — the fixture-matching
+    /// field of the topo `links(withInfo=True)` / MCP graph output.
+    /// Present when built from a topo/net with port info.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intf1: Option<String>,
+    /// Second endpoint's interface name (`s1-eth1`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intf2: Option<String>,
+    /// First endpoint's port number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port1: Option<u32>,
+    /// Second endpoint's port number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port2: Option<u32>,
 }
 
 /// The whole graph view: a snapshot of the emulated network.
@@ -183,8 +215,9 @@ pub struct GraphView {
 impl GraphView {
     /// Build the graph from a topology plan (`build_topo(spec)` result)
     /// without any `Mininet`: every node/edge is `Planned`, IPs come from
-    /// the topo's `ip` node attr when present. This is the `topo_plan`
-    /// payload of the MCP server.
+    /// the topo's `ip` node attr when present, and edges carry the
+    /// fixture-matching `intf1`/`intf2`/`port1`/`port2` from the link info
+    /// (the same fields the MCP server's graph payload exposes).
     pub fn from_topo(topo: &Topo, spec: Option<&str>) -> GraphView {
         let mut nodes = Vec::new();
         for name in topo.nodes(true) {
@@ -209,15 +242,36 @@ impl GraphView {
         }
         let mut edges = Vec::new();
         for link in topo.links(true, false, true) {
-            let label = link
-                .info
-                .map(|info| link_str(link.node1, link.node2, info))
-                .unwrap_or_else(|| format!("{}<->{}", link.node1, link.node2));
+            let (label, intf1, intf2, port1, port2) = match link.info {
+                Some(info) => {
+                    let p1 = info.get("port1").and_then(|v| v.as_int()).unwrap_or(0);
+                    let p2 = info.get("port2").and_then(|v| v.as_int()).unwrap_or(0);
+                    // same intf-name derivation as mn-net's link_str
+                    (
+                        link_str(link.node1, link.node2, info),
+                        Some(format!("{}-eth{p1}", link.node1)),
+                        Some(format!("{}-eth{p2}", link.node2)),
+                        u32::try_from(p1).ok(),
+                        u32::try_from(p2).ok(),
+                    )
+                }
+                None => (
+                    format!("{}<->{}", link.node1, link.node2),
+                    None,
+                    None,
+                    None,
+                    None,
+                ),
+            };
             edges.push(GEdge {
                 a: link.node1.to_string(),
                 b: link.node2.to_string(),
                 status: EdgeStatus::Planned,
                 label,
+                intf1,
+                intf2,
+                port1,
+                port2,
             });
         }
         GraphView {
@@ -316,6 +370,10 @@ impl GraphView {
                 b: link.node2.clone(),
                 status,
                 label: format!("{}<->{}", link.intf1.name, link.intf2.name),
+                intf1: Some(link.intf1.name.clone()),
+                intf2: Some(link.intf2.name.clone()),
+                port1: link.intf1.port,
+                port2: link.intf2.port,
             });
         }
         GraphView {
@@ -373,7 +431,13 @@ mod tests {
         assert!(g.nodes[..3].iter().all(|n| n.kind == NodeKind::Host));
         assert!(g.nodes.iter().all(|n| n.status == NodeStatus::Planned));
         assert_eq!(g.edges.len(), 3);
-        assert_eq!(g.edge("h1", "s1").unwrap().label, "h1-eth0<->s1-eth1");
+        let e = g.edge("h1", "s1").unwrap();
+        assert_eq!(e.label, "h1-eth0<->s1-eth1");
+        // fixture-matching intf/port fields are populated from the link info
+        assert_eq!(e.intf1.as_deref(), Some("h1-eth0"));
+        assert_eq!(e.intf2.as_deref(), Some("s1-eth1"));
+        assert_eq!(e.port1, Some(0));
+        assert_eq!(e.port2, Some(1));
         assert_eq!(g.edge("s1", "h3").unwrap().a, "h3"); // undirected lookup
     }
 
@@ -393,6 +457,8 @@ mod tests {
         assert_eq!(g.edges.len(), 3);
         assert!(g.edges.iter().all(|e| e.status == EdgeStatus::Planned));
         assert_eq!(g.edges[0].label, "h1-eth0<->s1-eth1");
+        assert_eq!(g.edges[0].intf1.as_deref(), Some("h1-eth0"));
+        assert_eq!(g.edges[0].port2, Some(1));
     }
 
     #[test]
@@ -404,8 +470,39 @@ mod tests {
         assert_eq!(v["nodes"].as_array().unwrap().len(), 4);
         assert_eq!(v["edges"].as_array().unwrap().len(), 3);
         assert_eq!(v["spec"], "single,3");
-        assert_eq!(v["nodes"][3]["kind"], "Switch");
+        // canonical shape: lowercase enum casing (matches the fixtures)
+        assert_eq!(v["nodes"][3]["kind"], "switch");
+        assert_eq!(v["nodes"][0]["kind"], "host");
+        assert_eq!(v["nodes"][0]["status"], "planned");
+        // fixture-matching edge fields ride along with the label
+        assert_eq!(v["edges"][0]["label"], "h1-eth0<->s1-eth1");
+        assert_eq!(v["edges"][0]["intf1"], "h1-eth0");
+        assert_eq!(v["edges"][0]["intf2"], "s1-eth1");
+        assert_eq!(v["edges"][0]["port1"], 0);
+        assert_eq!(v["edges"][0]["port2"], 1);
+        // from_net always fills detail, so it is present here
+        assert!(v["nodes"][0].get("detail").is_some());
         let back = GraphView::from_json(&s).unwrap();
         assert_eq!(back, g);
+    }
+
+    #[test]
+    fn detail_is_omitted_from_json_when_none() {
+        let built = mn_topo::build_topo("single,3").unwrap();
+        let g = GraphView::from_topo(built.topo(), Some("single,3"));
+        let s = g.to_json();
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        // #[serde(default)] alone would serialize "detail": null; the
+        // skip_serializing_if keeps the key out entirely ...
+        for n in v["nodes"].as_array().unwrap() {
+            assert!(n.get("detail").is_none(), "node: {n}");
+        }
+        // ... and the JSON still round-trips (default fills None back in)
+        let back = GraphView::from_json(&s).unwrap();
+        assert_eq!(back, g);
+        assert!(back.nodes.iter().all(|n| n.detail.is_none()));
+        // from_topo edges still carry the fixture-matching intf/port fields
+        assert_eq!(v["edges"][0]["intf1"], "h1-eth0");
+        assert_eq!(v["edges"][0]["port2"], 1);
     }
 }

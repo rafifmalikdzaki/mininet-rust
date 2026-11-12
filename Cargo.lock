@@ -866,7 +866,7 @@ name = "mn-mcp"
 version = "0.1.0"
 dependencies = [
  "mn-net",
- "mn-topo",
+ "mn-tui",
  "mn-util",
  "serde",
  "serde_json",
@@ -877,7 +877,6 @@ name = "mn-mcp-app"
 version = "0.1.0"
 dependencies = [
  "mn-mcp",
- "serde",
  "serde_json",
 ]
 
@@ -930,7 +929,6 @@ version = "0.1.0"
 dependencies = [
  "mn-link",
  "mn-net",
- "mn-node",
  "mn-topo",
  "mn-util",
  "serde",
@@ -944,9 +942,7 @@ dependencies = [
  "clap",
  "crossterm",
  "mn-net",
- "mn-topo",
  "mn-tui",
- "mn-util",
  "ratatui",
  "serde_json",
 ]

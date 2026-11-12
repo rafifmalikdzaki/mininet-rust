@@ -27,9 +27,9 @@ fn json_flag_parses_and_has_expected_nodes_edges() {
         assert!(ids.contains(&want), "nodes {ids:?} missing {want}");
     }
     let s1 = nodes.iter().find(|n| n["id"] == "s1").unwrap();
-    assert_eq!(s1["kind"], "Switch");
+    assert_eq!(s1["kind"], "switch"); // canonical shape: lowercase, like the fixtures
     let h1 = nodes.iter().find(|n| n["id"] == "h1").unwrap();
-    assert_eq!(h1["kind"], "Host");
+    assert_eq!(h1["kind"], "host");
     assert_eq!(h1["ip"], "10.0.0.1");
     let edges = v["edges"].as_array().expect("edges array");
     assert_eq!(edges.len(), 3);
