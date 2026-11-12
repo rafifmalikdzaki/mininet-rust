@@ -5,6 +5,8 @@
 
 mod support;
 
+use std::collections::BTreeSet;
+
 use support::{long_option_names, read_test_file};
 
 #[test]
@@ -26,9 +28,18 @@ fn same_option_names_as_python_bin_mn() {
         "options present in `python3 bin/mn --help` but missing from Rust mn --help: {missing_in_rust:?}\n\
          python help:\n{python_help}"
     );
+    // The Rust port adds exactly one harness-only flag beyond bin/mn's
+    // optparse surface: `--dump`, probed by scripts/diff_topology.sh
+    // (`mn --topo <spec> ... --dump` must be accepted and exit 0).
+    let allowed_extra: BTreeSet<&str> = ["dump"].into_iter().collect();
+    let unexpected_extra: Vec<_> = extra_in_rust
+        .iter()
+        .filter(|o| !allowed_extra.contains(o.as_str()))
+        .collect();
     assert!(
-        extra_in_rust.is_empty(),
-        "options present in Rust mn --help but not in `python3 bin/mn --help`: {extra_in_rust:?}"
+        unexpected_extra.is_empty(),
+        "options present in Rust mn --help but not in `python3 bin/mn --help` \
+         (beyond the allowed harness-only --dump): {unexpected_extra:?}"
     );
 
     // Guard against a broken extractor silently comparing two empty sets.

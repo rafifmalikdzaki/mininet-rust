@@ -1,35 +1,18 @@
 //! `mn` — Rust port of Mininet's `bin/mn` runner.
 //!
-//! Task 10 (first slice): PARSING ONLY. This binary parses the command-line
-//! argument surface ported from `bin/mn` (see [`cli`]), handles `--help`
-//! (clap) and `--version` (prints the Mininet version string, like
-//! `bin/mn`'s `version()` callback), and reports "not yet implemented" —
-//! exiting non-zero — for anything that would start actual emulation.
+//! Task 10b: the clap CLI ([`mn::cli`]) is wired to `mn-net`
+//! ([`mn::runner`]): `--topo <spec>` builds the net, `--dump` prints the
+//! plan/dump/links sections (non-root via the dry-run path), `--test` runs
+//! the built-in tests (root), `--clean` cleans up (root), and with no
+//! `--test`/`--xterms` it enters the interactive loop iff stdin is a tty,
+//! else dump+stop. `--version` prints the bare Mininet version and exits 0.
 
 use clap::Parser;
 
-use mn::cli::{MnArgs, VERSION};
+use mn::cli::MnArgs;
+use mn::runner;
 
 fn main() {
     let args = MnArgs::parse();
-
-    // `bin/mn --version` prints the bare version string and exits 0.
-    if args.version {
-        println!("{VERSION}");
-        return;
-    }
-
-    // Everything else would create/configure a network in `bin/mn`
-    // (including `--clean`, which mutates the system). Not wired up yet.
-    eprintln!("mn: not yet implemented: this Rust port parses command-line arguments only;");
-    eprintln!("mn: network emulation (topo/link/host/controller/netlink) is not wired up yet.");
-    eprintln!("mn: parsed args: {args:?}");
-    let topo = args.topo_spec();
-    eprintln!(
-        "mn: parsed --topo spec: name={:?}, positional params={:?}, key=value params={:?}",
-        topo.name,
-        topo.args(),
-        topo.kwargs()
-    );
-    std::process::exit(1);
+    std::process::exit(runner::run(&args));
 }

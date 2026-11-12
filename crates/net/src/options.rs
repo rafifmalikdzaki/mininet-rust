@@ -3,8 +3,9 @@
 //!
 //! Python's class-valued arguments (`switch=`, `host=`, `controller=`,
 //! `link=`, `intf=`) are compile-time types in Rust; what remains runtime-
-//! configurable is the controller *kind* ([`ControllerKind`], the
-//! `--controller` choice of `bin/mn`) and the link spec string
+//! configurable is the switch *kind* ([`SwitchKind`](crate::SwitchKind),
+//! the `--switch` choice of `bin/mn`), the controller *kind*
+//! ([`ControllerKind`], `--controller`), and the link spec string
 //! (`--link tc,bw=10,...`).
 
 use mn_topo::Topo;
@@ -70,6 +71,12 @@ pub struct MininetOptions {
     pub wait_connected: WaitConnected,
     /// `link=Link` as a spec string (`--link default` / `--link tc,bw=10`).
     pub link_spec: String,
+    /// `switch=OVSSwitch` as a spec string (`--switch default` /
+    /// `--switch ovs,failMode=standalone`) — selects the [`NetSwitch`]
+    /// subclass in [`Mininet::add_switch`](crate::Mininet::add_switch).
+    ///
+    /// [`NetSwitch`]: crate::NetSwitch
+    pub switch_spec: String,
     /// `controller=DefaultController`: default controller added by
     /// `buildFromTopo` when no controller exists yet; `None` adds none.
     pub controller: Option<ControllerKind>,
@@ -93,6 +100,7 @@ impl Default for MininetOptions {
             listen_port: None,
             wait_connected: WaitConnected::Off,
             link_spec: "default".to_string(),
+            switch_spec: "default".to_string(),
             controller: Some(ControllerKind::Default),
         }
     }

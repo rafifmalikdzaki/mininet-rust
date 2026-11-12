@@ -9,3 +9,4 @@ license.workspace = true
 clap = { version = "4", features = ["derive"] }
 mn-util = { path = "../../crates/util" }
 mn-topo = { path = "../../crates/topo" }
+mn-net = { path = "../../crates/net" }

@@ -97,7 +97,7 @@ def plan(spec, ipbase=DEFAULT_IPBASE):
         entries = sorted(intfs.get(s, []))
         # root-namespace switch: control intf lo (port 0, ip 127.0.0.1)
         parts = ["lo:127.0.0.1"] + ["%s:None" % name for _, name in entries]
-        out.append("<Switch %s: %s pid=None> " % (s, ",".join(parts)))
+        out.append("<OVSSwitch %s: %s pid=None> " % (s, ",".join(parts)))  # --switch default -> OVSSwitch, like repr(OVSSwitch(...))
 
     out.append("=== links ===")
     for src, dst, info in topo.links(sort=True, withInfo=True):

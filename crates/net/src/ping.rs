@@ -55,10 +55,18 @@ impl Mininet {
     /// Port of `Mininet.ping(hosts=None, timeout=None)`: ping between all
     /// given hosts (default: all hosts) via `node.cmd('LANG=C ping -c1 ...')`.
     /// `hosts` are node names. Returns the output text and ploss.
+    ///
+    /// Python's `if not hosts: hosts = self.hosts` makes an **empty** list
+    /// mean "all hosts" too, so `Some(vec![])` behaves like `None`.
     pub fn ping(&mut self, hosts: Option<Vec<&str>>, timeout: Option<&str>) -> Result<PingResult> {
         let mut out = String::new();
         let names: Vec<String> = match hosts {
             None => {
+                out.push_str("*** Ping: testing ping reachability\n");
+                self.hosts.keys().map(str::to_string).collect()
+            }
+            Some(v) if v.is_empty() => {
+                // Python: `if not hosts:` — empty list is falsy, all hosts.
                 out.push_str("*** Ping: testing ping reachability\n");
                 self.hosts.keys().map(str::to_string).collect()
             }
@@ -155,6 +163,42 @@ mod tests {
                    1 packets transmitted, 1 received, 0% packet loss, time 0ms\n\
                    rtt min/avg/max/mdev = 0.042/0.042/0.042/0.000 ms\n";
         assert_eq!(parse_ping(out), (1, 1));
+    }
+
+    #[test]
+    fn empty_hosts_list_means_all_hosts_like_python() {
+        // Python ping(): `if not hosts: hosts = self.hosts` — Some([]) must
+        // behave like None (all hosts + the "*** Ping:" header). Hosts here
+        // have no intfs, so every pair is (0, 0) and no cmd() is attempted.
+        use crate::options::MininetOptions;
+        use mn_topo::Attrs;
+        let mut net = crate::Mininet::new(MininetOptions {
+            build: false,
+            controller: None,
+            ..Default::default()
+        })
+        .unwrap();
+        net.add_host("h1", &Attrs::new()).unwrap();
+        net.add_host("h2", &Attrs::new()).unwrap();
+        let r = net.ping(Some(vec![]), None).unwrap();
+        assert!(
+            r.output
+                .starts_with("*** Ping: testing ping reachability\n"),
+            "{}",
+            r.output
+        );
+        assert!(r.output.contains("h1 -> "), "{}", r.output);
+        assert!(r.output.contains("h2 -> "), "{}", r.output);
+        assert!(
+            r.output.contains("*** Warning: No packets sent\n"),
+            "{}",
+            r.output
+        );
+        // ... and an explicit host list still restricts to it (no header)
+        let r = net.ping(Some(vec!["h1"]), None).unwrap();
+        assert!(!r.output.contains("*** Ping:"), "{}", r.output);
+        assert!(r.output.contains("h1 -> "), "{}", r.output);
+        assert!(!r.output.contains("h2 -> "), "{}", r.output);
     }
 
     #[test]

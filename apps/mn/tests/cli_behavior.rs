@@ -1,6 +1,7 @@
-//! Behavioral tests for the parsing-only slice of the Rust `mn`:
-//! `--help`/`--version` work, and anything that would start emulation exits
-//! non-zero with a clear "not yet implemented" message.
+//! Behavioral tests for the wired `mn` (task 10b): `--help`/`--version`
+//! work, `--dump` works non-root via the dry-run path (exit 0), and anything
+//! that would really start/stop a network is root-gated — as non-root it
+//! exits non-zero with a clear "requires root" message.
 
 mod support;
 
@@ -35,7 +36,10 @@ fn short_help_flag_works_like_optparse() {
 }
 
 #[test]
-fn emulation_invocation_is_not_yet_implemented_and_exits_nonzero() {
+fn real_start_stop_is_root_gated_non_root_gets_clear_error() {
+    // This test runs in the non-root workspace gate: bare `mn`, a topo
+    // build, `--test` and `--clean` must all exit non-zero with a clear
+    // "requires root" message (Python's ensureRoot equivalent).
     for argv in [
         vec!["mn"],
         vec!["mn", "--topo", "tree,2,2", "--link", "tc,bw=10,delay=5ms"],
@@ -45,14 +49,74 @@ fn emulation_invocation_is_not_yet_implemented_and_exits_nonzero() {
         let output = run_mn(&argv[1..]);
         assert!(
             !output.status.success(),
-            "{argv:?} should exit non-zero (parsing-only slice)"
+            "{argv:?} should exit non-zero when non-root"
         );
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            stderr.contains("not yet implemented"),
-            "{argv:?} should explain it is not yet implemented, stderr: {stderr}"
+            stderr.contains("requires root"),
+            "{argv:?} should explain it requires root, stderr: {stderr}"
         );
     }
+}
+
+#[test]
+fn dump_works_non_root_via_dry_run_and_exits_zero() {
+    // scripts/diff_topology.sh probes exactly this: `mn --topo <spec> ... --dump`
+    // must exit 0 non-root and print the plan/dump/links sections on stdout.
+    for spec in ["single,3", "linear,4", "tree,2,2"] {
+        let output = run_mn(&[
+            "--topo",
+            spec,
+            "--switch",
+            "default",
+            "--host",
+            "proc",
+            "--controller",
+            "none",
+            "--link",
+            "default",
+            "--ipbase",
+            "10.0.0.0/8",
+            "--dump",
+        ]);
+        assert!(
+            output.status.success(),
+            "mn --topo {spec} --dump should exit 0 non-root, stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.starts_with("=== topo ===\n"), "{spec}: {stdout}");
+        assert!(stdout.contains("=== dump ===\n"), "{spec}: {stdout}");
+        assert!(stdout.contains("=== links ===\n"), "{spec}: {stdout}");
+    }
+}
+
+#[test]
+fn unsupported_options_fail_with_clear_message() {
+    for argv in [
+        vec!["--custom", "foo.py"],
+        vec!["--pre", "pre.txt"],
+        vec!["--post", "post.txt"],
+        vec!["--nat"],
+        vec!["--cluster", "srv1,srv2"],
+        vec!["--innamespace"],
+    ] {
+        let output = run_mn(&argv);
+        assert!(!output.status.success(), "{argv:?} should exit non-zero");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("not ported") || stderr.contains("TODO"),
+            "{argv:?} should explain it is not ported, stderr: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn bad_topo_spec_exits_nonzero_with_error() {
+    let output = run_mn(&["--topo", "bogus", "--dump"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("bogus"), "stderr: {stderr}");
 }
 
 #[test]

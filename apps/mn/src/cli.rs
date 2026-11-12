@@ -114,6 +114,17 @@ pub struct MnArgs {
     )]
     pub xterms: bool,
 
+    // print the topology plan + dump + links sections and exit; non-root
+    // runs use the dry-run (no-kernel) path. Not in bin/mn's optparse —
+    // this flag exists for scripts/diff_topology.sh, which probes
+    // `mn --topo <spec> ... --dump` and expects exit 0.
+    #[arg(
+        long,
+        action = ArgAction::SetTrue,
+        help = "print the planned topology (=== topo === / === dump === / === links === sections, as scripts/diff_topology.sh expects) and exit; works non-root via the dry-run path"
+    )]
+    pub dump: bool,
+
     // base IP address for hosts
     #[arg(
         short = 'i',
@@ -358,6 +369,7 @@ mod tests {
         assert!(args.custom.is_none());
         assert!(args.test.is_empty());
         assert!(!args.xterms);
+        assert!(!args.dump); // harness-only flag (scripts/diff_topology.sh)
         assert_eq!(args.ipbase, "10.0.0.0/8");
         assert!(!args.mac);
         assert!(!args.arp);

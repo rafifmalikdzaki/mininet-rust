@@ -8,7 +8,9 @@
 //! - `do_dump`: `output('%s\n' % repr(node))` for `node in mn.values()`, and
 //!   `Node.__repr__` is `'<%s %s: %s pid=%s> ' % (class, name, intfs, pid)`
 //!   with `intfs = ','.join('%s:%s' % (i.name, i.IP()))` (note the trailing
-//!   space). `Controller.__repr__` is
+//!   space) and `class = self.__class__.__name__` — taken from
+//!   [`Node::kind`](mn_node::Node::kind) here, so `--switch default` shows
+//!   `OVSSwitch`. `Controller.__repr__` is
 //!   `'<%s %s: %s:%s pid=%s> ' % (class, name, IP(), port, pid)`.
 //! - `do_links`: `output(link, link.status(), '\n')` with
 //!   `Link.__str__` = `'intf1<->intf2'` and `Link.status()` =
@@ -70,13 +72,17 @@ fn intfs_repr(node: &Node, control_intf: Option<&Intf>) -> String {
 }
 
 /// Python `repr(node)` for any node kind (`Node.__repr__` /
-/// `Controller.__repr__`), trailing space included.
+/// `Controller.__repr__`), trailing space included. The class name is
+/// `Node::kind()` — i.e. `self.__class__.__name__` in Python — so a switch
+/// built from `--switch default` prints `<OVSSwitch s1: ...>`, exactly like
+/// Python's `repr(OVSSwitch(...))`.
 pub fn repr_node(node: NodeRef<'_>) -> String {
     match node {
         NodeRef::Host(h) => {
             let n = h.node();
             format!(
-                "<Host {}: {} pid={}> ",
+                "<{} {}: {} pid={}> ",
+                n.kind(),
                 n.name,
                 intfs_repr(n, None),
                 pid_repr(n)
@@ -85,7 +91,8 @@ pub fn repr_node(node: NodeRef<'_>) -> String {
         NodeRef::Switch(s) => {
             let n = s.node();
             format!(
-                "<Switch {}: {} pid={}> ",
+                "<{} {}: {} pid={}> ",
+                n.kind(),
                 n.name,
                 intfs_repr(n, s.control_intf.as_ref()),
                 pid_repr(n)
@@ -94,7 +101,8 @@ pub fn repr_node(node: NodeRef<'_>) -> String {
         NodeRef::Controller(c) => {
             let n = c.node();
             format!(
-                "<Controller {}: {}:{} pid={}> ",
+                "<{} {}: {}:{} pid={}> ",
+                n.kind(),
                 n.name,
                 c.ip(),
                 c.port,
@@ -215,7 +223,7 @@ mod tests {
 <Host h1: h1-eth0:10.0.0.1 pid=None> \n\
 <Host h2: h2-eth0:10.0.0.2 pid=None> \n\
 <Host h3: h3-eth0:10.0.0.3 pid=None> \n\
-<Switch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None,s1-eth3:None pid=None> \n";
+<OVSSwitch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None,s1-eth3:None pid=None> \n";
         assert_eq!(net.dump(), expected);
     }
 
@@ -244,7 +252,7 @@ links: h1-eth0<->s1-eth1 h2-eth0<->s1-eth2 h3-eth0<->s1-eth3
 <Host h1: h1-eth0:10.0.0.1 pid=None> \n\
 <Host h2: h2-eth0:10.0.0.2 pid=None> \n\
 <Host h3: h3-eth0:10.0.0.3 pid=None> \n\
-<Switch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None,s1-eth3:None pid=None> \n\
+<OVSSwitch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None,s1-eth3:None pid=None> \n\
 === links ===
 h1-eth0<->s1-eth1 (MISSING MISSING)\n\
 h2-eth0<->s1-eth2 (MISSING MISSING)\n\

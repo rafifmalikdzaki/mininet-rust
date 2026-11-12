@@ -12,6 +12,7 @@ Options:
       --custom <CUSTOM>               read custom classes or params from .py file(s)
       --test <TEST>                   pingall|pingpair|iperf|iperfudp|all|none|build
   -x, --xterms                        spawn xterms for each node
+      --dump                          print the planned topology (=== topo === / === dump === / === links === sections, as scripts/diff_topology.sh expects) and exit; works non-root via the dry-run path
   -i, --ipbase <IPBASE>               base IP address for hosts [default: 10.0.0.0/8]
       --mac                           automatically set host MACs
       --arp                           set all-pairs ARP entries

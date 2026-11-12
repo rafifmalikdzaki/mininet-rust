@@ -136,7 +136,7 @@ links: h1-eth0<->s1-eth1 h2-eth0<->s1-eth2 h3-eth0<->s1-eth3
 <Host h1: h1-eth0:10.0.0.1 pid=None> \n\
 <Host h2: h2-eth0:10.0.0.2 pid=None> \n\
 <Host h3: h3-eth0:10.0.0.3 pid=None> \n\
-<Switch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None,s1-eth3:None pid=None> \n\
+<OVSSwitch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None,s1-eth3:None pid=None> \n\
 === links ===
 h1-eth0<->s1-eth1 (MISSING MISSING)\n\
 h2-eth0<->s1-eth2 (MISSING MISSING)\n\
@@ -160,10 +160,10 @@ links: h1-eth0<->s1-eth1 h2-eth0<->s2-eth1 h3-eth0<->s3-eth1 h4-eth0<->s4-eth1 s
 <Host h2: h2-eth0:10.0.0.2 pid=None> \n\
 <Host h3: h3-eth0:10.0.0.3 pid=None> \n\
 <Host h4: h4-eth0:10.0.0.4 pid=None> \n\
-<Switch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None pid=None> \n\
-<Switch s2: lo:127.0.0.1,s2-eth1:None,s2-eth2:None,s2-eth3:None pid=None> \n\
-<Switch s3: lo:127.0.0.1,s3-eth1:None,s3-eth2:None,s3-eth3:None pid=None> \n\
-<Switch s4: lo:127.0.0.1,s4-eth1:None,s4-eth2:None pid=None> \n\
+<OVSSwitch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None pid=None> \n\
+<OVSSwitch s2: lo:127.0.0.1,s2-eth1:None,s2-eth2:None,s2-eth3:None pid=None> \n\
+<OVSSwitch s3: lo:127.0.0.1,s3-eth1:None,s3-eth2:None,s3-eth3:None pid=None> \n\
+<OVSSwitch s4: lo:127.0.0.1,s4-eth1:None,s4-eth2:None pid=None> \n\
 === links ===
 h1-eth0<->s1-eth1 (MISSING MISSING)\n\
 h2-eth0<->s2-eth1 (MISSING MISSING)\n\
@@ -191,9 +191,9 @@ links: s1-eth1<->s2-eth3 s1-eth2<->s3-eth3 s2-eth1<->h1-eth0 s2-eth2<->h2-eth0 s
 <Host h2: h2-eth0:10.0.0.2 pid=None> \n\
 <Host h3: h3-eth0:10.0.0.3 pid=None> \n\
 <Host h4: h4-eth0:10.0.0.4 pid=None> \n\
-<Switch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None pid=None> \n\
-<Switch s2: lo:127.0.0.1,s2-eth1:None,s2-eth2:None,s2-eth3:None pid=None> \n\
-<Switch s3: lo:127.0.0.1,s3-eth1:None,s3-eth2:None,s3-eth3:None pid=None> \n\
+<OVSSwitch s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None pid=None> \n\
+<OVSSwitch s2: lo:127.0.0.1,s2-eth1:None,s2-eth2:None,s2-eth3:None pid=None> \n\
+<OVSSwitch s3: lo:127.0.0.1,s3-eth1:None,s3-eth2:None,s3-eth3:None pid=None> \n\
 === links ===
 s1-eth1<->s2-eth3 (MISSING MISSING)\n\
 s1-eth2<->s3-eth3 (MISSING MISSING)\n\

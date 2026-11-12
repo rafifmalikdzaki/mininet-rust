@@ -27,6 +27,7 @@ use mn_topo::{Attrs, Topo};
 use crate::error::{Error, Result};
 use crate::map::{NameToNode, NodeId, NodeMap, NodeRef, NodeRefMut};
 use crate::options::{ControllerKind, MininetOptions, WaitConnected};
+use crate::switch::NetSwitch;
 
 /// Port of `Mininet.randMac()`: a random, non-multicast, locally
 /// administered MAC (`macColonHex(rand & 0xfeffffffffff | 0x020000000000)`).
@@ -101,12 +102,16 @@ pub struct Mininet {
     pub wait_connected: WaitConnected,
     /// `link=` as a spec string (`default` / `tc,bw=10,...`).
     pub link_spec: String,
+    /// `switch=` as a spec string (`default` / `ovs,failMode=...`) —
+    /// selects the [`NetSwitch`] subclass in [`Mininet::add_switch`].
+    pub switch_spec: String,
     /// `controller=` default kind added by `buildFromTopo` when empty.
     pub default_controller: Option<ControllerKind>,
     /// `self.hosts` — as an insertion-ordered map (Python: list + dict).
     pub hosts: NodeMap<Host>,
-    /// `self.switches`.
-    pub switches: NodeMap<Switch>,
+    /// `self.switches` — [`NetSwitch`] values (the `--switch` subclass),
+    /// so `start()` dispatches to the real switch implementation.
+    pub switches: NodeMap<NetSwitch>,
     /// `self.controllers`.
     pub controllers: NodeMap<Controller>,
     /// `self.links` (Python: a plain list).
@@ -153,6 +158,7 @@ impl Mininet {
             listen_port: opts.listen_port,
             wait_connected: opts.wait_connected,
             link_spec: opts.link_spec,
+            switch_spec: opts.switch_spec,
             default_controller: opts.controller,
             hosts: NodeMap::new(),
             switches: NodeMap::new(),
@@ -241,7 +247,17 @@ impl Mininet {
             .or(self.listen_port);
         let dpid = attrs.get("dpid").and_then(|v| v.as_str());
         let opts = attrs.get("opts").and_then(|v| v.as_str()).unwrap_or("");
-        let sw = Switch::new(&name, dpid, opts, listen_port, in_namespace, params)?;
+        // The `--switch` spec selects the mn-node subclass (default:
+        // OVSSwitch), like bin/mn's `customClass(SWITCHES, opts.switch)`.
+        let sw = NetSwitch::from_spec(
+            &self.switch_spec,
+            &name,
+            dpid,
+            opts,
+            listen_port,
+            in_namespace,
+            params,
+        )?;
         if !self.in_namespace && self.listen_port.is_some() {
             self.listen_port = self.listen_port.map(|p| p + 1);
         }
@@ -331,7 +347,23 @@ impl Mininet {
             match k {
                 "node1" | "node2" | "port1" | "port2" | "intfName1" | "intfName2" | "addr1"
                 | "addr2" | "cls" | "port" | "intf" => {}
-                _ => pairs.push(format!("{k}={v}")),
+                _ => {
+                    // GUARD: the remaining link-info attrs are encoded into
+                    // the link *spec string* as `k=v` pairs joined by ','
+                    // (Python passes them as **kwargs to the Link class
+                    // instead). That encoding cannot round-trip a key
+                    // containing '=' or ',' or a value containing ',', so
+                    // reject such attrs loudly instead of silently corrupting
+                    // the spec (parse_link_spec would mis-split them).
+                    let v = v.to_string();
+                    if k.contains('=') || k.contains(',') || v.contains(',') {
+                        return Err(Error::InvalidInput(format!(
+                            "link attr {k}={v} cannot be encoded into the link spec \
+                             (keys must not contain '=' or ',', values must not contain ',')"
+                        )));
+                    }
+                    pairs.push(format!("{k}={v}"));
+                }
             }
         }
         if !pairs.is_empty() {
@@ -443,7 +475,7 @@ impl Mininet {
     }
 
     /// Port of `Mininet.configHosts()`: `configDefault()` on each host's
-    /// default intf (or `config(ip=None, mac=None)` when it has none).
+    /// default intf (or `configDefault(ip=None, mac=None)` when it has none).
     pub fn config_hosts(&mut self) -> Result<()> {
         let names: Vec<String> = self.hosts.keys().map(str::to_string).collect();
         for name in &names {
@@ -452,7 +484,18 @@ impl Mininet {
             if h.node().default_intf().is_some() {
                 h.config_default()?;
             } else {
-                h.node_mut().config(None, None, None, "up")?;
+                // Python: host.configDefault(ip=None, mac=None) — the host's
+                // params still apply (notably defaultRoute), only ip/mac are
+                // forced off; do NOT hardcode defaultRoute to None here.
+                let default_route = h.node().params.get("defaultRoute").cloned();
+                let lo = h
+                    .node()
+                    .params
+                    .get("lo")
+                    .cloned()
+                    .unwrap_or_else(|| "up".to_string());
+                h.node_mut()
+                    .config(None, None, default_route.as_deref(), &lo)?;
             }
         }
         eprintln!();
@@ -553,47 +596,68 @@ impl Mininet {
         // after the link ends have been moved into the host namespaces.
         self.config_hosts()?;
         if self.wait_connected != WaitConnected::Off {
-            self.wait_connected_switches()?;
+            // Python's start() ignores waitConnected's return value; a
+            // timeout warns inside wait_connected_switches, not errors.
+            let _ = self.wait_connected_switches();
         }
         Ok(())
     }
 
     /// Port of `Mininet.waitConnected`: wait until all switches report
-    /// connected (the `Switch::connected` stub is always true today).
-    pub fn wait_connected_switches(&mut self) -> Result<()> {
+    /// connected. Returns whether all switches connected — a timeout only
+    /// **warns** (`Timed out after N seconds` / `Warning: <sw> is not
+    /// connected to a controller`), it does not error, exactly like Python.
+    pub fn wait_connected_switches(&mut self) -> bool {
         eprintln!("*** Waiting for switches to connect");
+        // Python: False -> 0s timeout; None/True -> wait forever; number ->
+        // timed wait. `WaitConnected::Off` maps to the 0s check.
         let timeout = match self.wait_connected {
             WaitConnected::Off => Some(0.0),
             WaitConnected::Forever => None,
             WaitConnected::Timed(t) => Some(t),
         };
-        let start = std::time::Instant::now();
+        let delay = 0.5; // Python's delay=.5
+        let mut time = 0.0f64;
+        let mut remaining: Vec<String> = self.switches.keys().map(str::to_string).collect();
         loop {
-            let names: Vec<String> = self.switches.keys().map(str::to_string).collect();
-            let mut remaining: Vec<String> = Vec::new();
-            for name in &names {
-                let s = self.switches.get(name).expect("listed above");
+            let mut still: Vec<String> = Vec::new();
+            for name in &remaining {
+                let s = self.switches.get_mut(name).expect("listed above");
                 if s.connected() {
                     eprint!("{name} ");
                 } else {
-                    remaining.push(name.clone());
+                    still.push(name.clone());
                 }
             }
+            remaining = still;
             if remaining.is_empty() {
                 eprintln!();
-                return Ok(());
+                return true;
             }
             if let Some(t) = timeout {
-                if start.elapsed().as_secs_f64() >= t {
-                    eprintln!("\n*** Timed out after {} seconds", t);
-                    return Err(Error::Other(format!(
-                        "{} switch(es) not connected to a controller",
-                        remaining.len()
-                    )));
+                if time >= t {
+                    break;
                 }
             }
-            std::thread::sleep(std::time::Duration::from_millis(500));
+            std::thread::sleep(std::time::Duration::from_secs_f64(delay));
+            time += delay;
         }
+        // Python: warn('Timed out after %d seconds') then warn per
+        // not-connected switch; returns `not remaining` (no exception).
+        eprintln!("\n*** Timed out after {} seconds", time as i64);
+        let mut all_connected = true;
+        for name in &remaining {
+            let connected = self
+                .switches
+                .get_mut(name)
+                .map(|s| s.connected())
+                .unwrap_or(false);
+            if !connected {
+                eprintln!("*** Warning: {name} is not connected to a controller");
+                all_connected = false;
+            }
+        }
+        all_connected
     }
 
     /// Port of `Mininet.stop()` — reverse of [`Mininet::start`] (links, hosts,
@@ -628,9 +692,13 @@ impl Mininet {
         for name in &s_names {
             eprint!("{name} ");
             let s = self.switches.get_mut(name).expect("listed above");
-            s.stop();
+            // NetSwitch::stop dispatches to the subclass (e.g. OVSSwitch's
+            // `ovs-vsctl del-br`); on a not-started node it is model-only.
+            if let Err(e) = s.stop(true) {
+                errs.push(e);
+            }
             if let Err(e) = s.terminate() {
-                errs.push(Error::Node(e));
+                errs.push(e);
             }
         }
         eprintln!();
@@ -671,7 +739,7 @@ impl Mininet {
             }
             NodeId::Switch(i) => {
                 let s = self.switches.at_mut(i);
-                s.stop_with(true);
+                s.stop(true)?;
                 s.terminate()?;
                 self.switches.remove(name);
             }
@@ -717,7 +785,7 @@ impl Mininet {
     fn by_id(&self, id: NodeId) -> NodeRef<'_> {
         match id {
             NodeId::Host(i) => NodeRef::Host(self.hosts.at(i)),
-            NodeId::Switch(i) => NodeRef::Switch(self.switches.at(i)),
+            NodeId::Switch(i) => NodeRef::Switch(self.switches.at(i).as_switch()),
             NodeId::Controller(i) => NodeRef::Controller(self.controllers.at(i)),
         }
     }
@@ -725,7 +793,7 @@ impl Mininet {
     fn by_id_mut(&mut self, id: NodeId) -> NodeRefMut<'_> {
         match id {
             NodeId::Host(i) => NodeRefMut::Host(self.hosts.at_mut(i)),
-            NodeId::Switch(i) => NodeRefMut::Switch(self.switches.at_mut(i)),
+            NodeId::Switch(i) => NodeRefMut::Switch(self.switches.at_mut(i).as_switch_mut()),
             NodeId::Controller(i) => NodeRefMut::Controller(self.controllers.at_mut(i)),
         }
     }
@@ -749,12 +817,29 @@ impl Mininet {
         })
     }
 
-    /// `net.switch(name)`-style typed lookup.
+    /// `net.switch(name)`-style typed lookup (base [`Switch`] view).
     pub fn switch(&self, name: &str) -> Option<&Switch> {
+        self.name_to_node.get(name).and_then(|id| match id {
+            NodeId::Switch(i) => Some(self.switches.at(i).as_switch()),
+            _ => None,
+        })
+    }
+
+    /// `net.switch(name)`-style lookup of the full [`NetSwitch`] (the
+    /// `--switch` subclass with its `start`/`stop` dispatch).
+    pub fn net_switch(&self, name: &str) -> Option<&NetSwitch> {
         self.name_to_node.get(name).and_then(|id| match id {
             NodeId::Switch(i) => Some(self.switches.at(i)),
             _ => None,
         })
+    }
+
+    /// Mutable variant of [`Mininet::net_switch`].
+    pub fn net_switch_mut(&mut self, name: &str) -> Option<&mut NetSwitch> {
+        match self.name_to_node.get(name) {
+            Some(NodeId::Switch(i)) => Some(self.switches.at_mut(i)),
+            _ => None,
+        }
     }
 
     /// `net.controller(name)`-style typed lookup.
@@ -919,6 +1004,119 @@ mod tests {
             h.node().params.get("mac").map(String::as_str),
             Some("00:00:00:00:00:01")
         );
+    }
+
+    #[test]
+    fn add_switch_selects_subclass_from_switch_spec() {
+        use crate::switch::SwitchKind;
+        // default -> OVSSwitch (bin/mn SWITCHES['default'] = OVSSwitch)
+        let mut net = Mininet::new(MininetOptions {
+            build: false,
+            ..opts()
+        })
+        .unwrap();
+        net.add_switch("s1", &empty()).unwrap();
+        assert_eq!(net.net_switch("s1").unwrap().kind(), SwitchKind::Ovs);
+        assert_eq!(net.switch("s1").unwrap().node().kind(), "OVSSwitch");
+
+        // --switch user -> UserSwitch (dpidLen 12)
+        let mut net = Mininet::new(MininetOptions {
+            build: false,
+            switch_spec: "user".to_string(),
+            ..opts()
+        })
+        .unwrap();
+        net.add_switch("s1", &empty()).unwrap();
+        assert_eq!(net.net_switch("s1").unwrap().kind(), SwitchKind::User);
+        assert_eq!(net.switch("s1").unwrap().node().kind(), "UserSwitch");
+        assert_eq!(net.switch("s1").unwrap().dpid.len(), 12);
+
+        // --switch ovsbr -> OVSBridge; lxbr models LinuxBridge, start errors
+        let mut net = Mininet::new(MininetOptions {
+            build: false,
+            switch_spec: "ovsbr".to_string(),
+            ..opts()
+        })
+        .unwrap();
+        net.add_switch("s1", &empty()).unwrap();
+        assert_eq!(net.switch("s1").unwrap().node().kind(), "OVSBridge");
+
+        let mut net = Mininet::new(MininetOptions {
+            build: false,
+            switch_spec: "lxbr".to_string(),
+            ..opts()
+        })
+        .unwrap();
+        net.add_switch("s1", &empty()).unwrap();
+        assert_eq!(net.switch("s1").unwrap().node().kind(), "LinuxBridge");
+        let err = net.net_switch_mut("s1").unwrap().start(&[]).unwrap_err();
+        assert!(err.to_string().contains("not ported"), "got: {err}");
+
+        // unknown class errors at add time
+        let mut net = Mininet::new(MininetOptions {
+            build: false,
+            switch_spec: "bogus".to_string(),
+            ..opts()
+        })
+        .unwrap();
+        assert!(net.add_switch("s1", &empty()).is_err());
+    }
+
+    #[test]
+    fn wait_connected_timeout_warns_and_returns_false_not_error() {
+        // Python waitConnected: timeout -> warn(...) and return False, no
+        // exception. A dry-run OVS switch in secure mode is "not connected".
+        let mut net = Mininet::dry_run(
+            "single,2",
+            MininetOptions {
+                wait_connected: WaitConnected::Timed(0.0),
+                ..opts()
+            },
+        )
+        .unwrap();
+        assert!(!net.wait_connected_switches()); // warns, does not error
+    }
+
+    #[test]
+    fn add_link_rejects_attrs_that_cannot_be_encoded_in_spec() {
+        let mut net = Mininet::new(MininetOptions {
+            build: false,
+            ..opts()
+        })
+        .unwrap();
+        net.add_host("h1", &empty()).unwrap();
+        net.add_switch("s1", &empty()).unwrap();
+        // a value containing ',' would corrupt the comma-joined spec
+        let mut attrs = Attrs::new();
+        attrs.insert("bw", "10,delay=5ms");
+        assert!(net.add_link("h1", "s1", None, None, &attrs).is_err());
+        // a key containing '=' would corrupt the k=v split
+        let mut attrs = Attrs::new();
+        attrs.insert("bw=10", "5");
+        assert!(net.add_link("h1", "s1", None, None, &attrs).is_err());
+        // normal tc params still encode fine
+        let mut attrs = Attrs::new();
+        attrs.insert("bw", "10");
+        attrs.insert("delay", "5ms");
+        net.add_link("h1", "s1", None, None, &attrs).unwrap();
+        assert_eq!(net.links.len(), 1);
+    }
+
+    #[test]
+    fn config_hosts_else_branch_honors_default_route_param() {
+        // Host with no intfs (no default intf): Python's else branch is
+        // configDefault(ip=None, mac=None) — the defaultRoute param still
+        // applies. On a non-started node the cmd is skipped (NotRunning),
+        // so this must simply not error.
+        let mut net = Mininet::new(MininetOptions {
+            build: false,
+            ..opts()
+        })
+        .unwrap();
+        let mut attrs = Attrs::new();
+        attrs.insert("defaultRoute", "via 10.0.0.254");
+        net.add_host("h1", &attrs).unwrap();
+        net.config_hosts().unwrap();
     }
 
     #[test]

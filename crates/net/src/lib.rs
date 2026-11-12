@@ -36,7 +36,7 @@
 //!   spec (`--topo single,3`) and [`Mininet::plan`] prints the planned
 //!   nodes/links/IPs (`=== topo ===` / `=== dump ===` / `=== links ===`
 //!   sections) **without touching the kernel** — non-root testable; this is
-//!   the `--dump` path of `apps/mn` later.
+//!   the non-root `--dump` path of `apps/mn` (task 10b).
 //!
 //! # Deliberate deviations from CPython (documented)
 //!
@@ -53,18 +53,20 @@
 //!   `Mininet.init`): kernel-touching ops fail with permission errors, and
 //!   dry-run construction is deliberately allowed unprivileged.
 //! - Python's class-valued constructor args (`switch=`, `host=`, ...) are
-//!   concrete types here; the runtime choices are [`ControllerKind`]
-//!   (`--controller default|none`) and the `link_spec` string
+//!   concrete types here; the runtime choices are [`SwitchKind`]/[`NetSwitch`]
+//!   (`--switch default|ovs|ovsbr|user|ivs|lxbr`), [`ControllerKind`]
+//!   (`--controller default|none`), and the `link_spec` string
 //!   (`--link default|tc,...`). `NullController` returns `None` in Python,
 //!   so `ControllerKind::None` adds no node.
 //! - `MininetWithControlNet` (control-network config for
 //!   `inNamespace=True`) is a **documented TODO**: `build()` returns an
 //!   explicit error for `in_namespace=true` until ported.
-//! - Switch/controller *startup* (`Switch.start(controllers)`,
-//!   `Controller.start`) are `mn-node` 8b TODO stubs; `Mininet::start`
-//!   calls them in order and propagates their errors, so a full `start()`
-//!   with switches/controllers needs task 8b. Hosts+links (the pingall
-//!   path) work end-to-end today.
+//! - Switch *startup* dispatches through [`NetSwitch`] to the real `mn-node`
+//!   subclass (`OVSSwitch` runs its `ovs-vsctl` argv, ...), so
+//!   switch-bearing topos start on root hosts; `lxbr` (LinuxBridge) is not
+//!   ported in mn-node and errors clearly at `start()`. Controller startup
+//!   uses `mn-node`'s `Controller::start` (the `controller` binary); the
+//!   NOX/Ryu controller subclasses remain TODO stubs there.
 //! - Progress logging (`info(...)`) goes to stderr via `eprintln!`;
 //!   `dump()`/`links()`/`plan()`/`ping()` return their text so callers
 //!   (and tests) control the stream, like Python's `output()` logger.
@@ -80,19 +82,25 @@
 //! `MN_RUST_ROOT_TESTS=1`, to run on a privileged host/CI runner:
 //! `MN_RUST_ROOT_TESTS=1 cargo test -p mn-net -- --ignored --test-threads=1`
 
+mod clean;
 mod error;
+mod iperf;
 mod map;
 mod net;
 mod observe;
 mod options;
 mod ping;
+mod switch;
 
+pub use clean::{cleanup, is_root};
 pub use error::{Error, Result};
+pub use iperf::{iperf_vals, IperfResult, IperfVals};
 pub use map::{NameToNode, NodeId, NodeMap, NodeRef, NodeRefMut};
 pub use net::{rand_mac, Mininet};
 pub use observe::{link_str, repr_node, topo_section};
 pub use options::{ControllerKind, MininetOptions, WaitConnected};
 pub use ping::{parse_ping, PingResult};
+pub use switch::{NetSwitch, SwitchKind};
 
 /// Whether root/namespace integration tests should actually run.
 ///
