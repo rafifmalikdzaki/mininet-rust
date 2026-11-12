@@ -235,10 +235,24 @@ if ! PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
     exit 3
 fi
 
+# mnr --dump prints the topo/dump/links sections but no pingall section;
+# append one from a --test pingall run so both sides are compared end to end.
+{
+    cat "$RUST_RAW"
+    echo "=== pingall ==="
+    "$MN_BIN" --topo "$SPEC" \
+        --switch "$DIFF_MN_SWITCH" --host "$DIFF_MN_HOST" \
+        --controller "$DIFF_MN_CONTROLLER" --link "$DIFF_MN_LINK" \
+        --ipbase "$DIFF_MN_IPBASE" --test pingall 2>/dev/null \
+        | sed -n '/\*\*\* Ping:/,$p'
+} >"$RUST_RAW.tmp" && mv "$RUST_RAW.tmp" "$RUST_RAW"
+
 # --- normalize both outputs and diff ------------------------------------------
 normalize() {
     sed -E \
         -e 's/pid=[0-9]+/pid=<PID>/g' \
+        -e 's/pid=None/pid=<PID>/g' \
+        -e '/Error setting resource limits/d' \
         -e 's/[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?//g' \
         -e '/completed in [0-9.]+ seconds/d' \
         -e 's/[[:space:]]+$//' \
