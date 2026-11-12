@@ -79,8 +79,19 @@ jobs:
         run: MN_RUST_ROOT_TESTS=1 cargo test --workspace -- --ignored --test-threads=1
 
       # 2. One-shot root suite: re-runs the root-gated cargo tests and then
-      #    scripts/diff_topology.sh for single,3 linear,4 tree,2,2, diffing
-      #    the normalized Python reference dump vs the Rust `mn --dump`
-      #    output (MATCH/MISMATCH per spec). Exits non-zero on any failure.
+      #    scripts/diff_topology.sh across the increasing-complexity ladder
+      #    (single,3 ... tree,3,3), diffing the normalized Python reference
+      #    dump vs the Rust `mnr --dump` output (MATCH/MISMATCH per spec).
+      #    Exits non-zero on any failure.
       - name: Full root suite + differential topology harness
         run: sh scripts/run_root_tests.sh
+
+      # 3. Differential benchmark ladder: Python bin/mn vs Rust mnr on the
+      #    same scenario ladder; markdown table uploaded as an artifact.
+      - name: Benchmark scenarios (python mn vs rust mnr)
+        run: sh scripts/bench_scenarios.sh > bench-results.md
+      - name: Upload benchmark table
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench-results.md

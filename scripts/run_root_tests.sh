@@ -72,7 +72,7 @@ fi
 printf '%-58s %-10s %s\n' "cargo: MN_RUST_ROOT_TESTS=1 ... -- --ignored --test-threads=1" "$RES" "$DETAIL"
 
 # --- 2. differential topology harness over the fixture specs -------------------
-SPECS=${DIFF_TOPOS:-'single,3 linear,4 tree,2,2'}
+SPECS=${DIFF_TOPOS:-'single,3 linear,4 linear,10 tree,2,2 tree,3,2 tree,3,3'}
 for SPEC in $SPECS; do
     LOG=$WORK/diff_topology_$SPEC.log
     set +e

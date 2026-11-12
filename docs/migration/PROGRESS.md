@@ -48,6 +48,9 @@ Gates now: 410 passed / 0 failed / 29 ignored (root-gated).
 | c6ee867 | mn-tui OMO-style graph TUI, headless --frames/--json (T13) |
 | e8b42fd | mn-mcp MCP server, 12 graph+sim tools, stdio JSON-RPC (T14) |
 
+## Latest
+- 386dd1a rename CLI mn -> mnr; Sphinx docs site (docs/, furo) + modernized README; bench_scenarios.sh ladder (single,3..tree,3,3) + CI artifact; diff ladder extended; BENCHMARKS.md methodology.
+
 ## In flight
 - Task 8b: Switch/Controller real ports (agents: switch-ctrl) — crates/node only.
 - Task 9: mn-net orchestrator + non-root dry-run `--dump` (agent: net-orch) —

@@ -837,16 +837,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mn"
-version = "0.1.0"
-dependencies = [
- "clap",
- "mn-net",
- "mn-topo",
- "mn-util",
-]
-
-[[package]]
 name = "mn-link"
 version = "0.1.0"
 dependencies = [
@@ -957,6 +947,16 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "nix 0.31.3",
+]
+
+[[package]]
+name = "mnr"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "mn-net",
+ "mn-topo",
+ "mn-util",
 ]
 
 [[package]]

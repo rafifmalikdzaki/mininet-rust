@@ -23,13 +23,17 @@ reviewed, gate-green work, atomic per category, no AI attribution.
 - [ ] T12 privileged CI + RUST.md/BENCHMARKS.md (agent ci-docs)
 
 ## Queued
+- [x] rename Rust CLI to mnr (386dd1a)
+- [x] Sphinx docs site (docs/) + modernized README
+- [x] bench_scenarios.sh ladder + CI artifact; diff ladder extended
+- [ ] fill BENCHMARKS.md results from CI artifact
 - [x] T13 mn-tui graph TUI (c6ee867)
 - [x] T14 mn-mcp MCP server (e8b42fd)
 - [x] T10b wire mn -> mn-net (5adb7e0): --topo/--dump/--test, non-root dry-run path
 - [x] T10c repl.rs interactive loop (ed56dbc): nodes/links/dump/net/ports/hosts/switches/controllers/ping/pingall/iperf/dpctl/route/xterm/exit (2-3 cmds per commit, golden tests)
 - [ ] T10d parity polish (agent repl-polish) (sh passthrough, intfs, py escape optional)
 - [x] nodelib: LinuxBridge/NAT/CPULimitedHost (2539eaa)
-- [ ] T11 full run on privileged host/CI (workflow rust-root-tests.yaml landed; needs a real CI run)
+- [~] T11 privileged CI run (workflow landed; bench+diff ladders added: single,3..tree,3,3); needs a real CI run
 - [x] T12 privileged CI + RUST.md + BENCHMARKS + D14-D17 (d742d88) PROGRESS/DECISIONS/BENCHMARKS, README, privileged CI job, PR to master
 - [ ] scope decision: miniedit/consoles/cluster/mobility out of v1 (DECISIONS.md)
 

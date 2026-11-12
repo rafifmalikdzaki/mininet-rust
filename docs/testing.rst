@@ -29,3 +29,16 @@ Privileged (root / CI)
 
 CI: ``.github/workflows/rust-ci.yaml`` (fmt/clippy/test/release) and
 ``.github/workflows/rust-root-tests.yaml`` (privileged container with OVS).
+
+Benchmarks & differential scenarios
+-----------------------------------
+
+``scripts/run_root_tests.sh`` diffs Rust ``mnr --dump`` against the Python
+reference across an increasing-complexity ladder: ``single,3``, ``linear,4``,
+``linear,10``, ``tree,2,2``, ``tree,3,2``, ``tree,3,3``.
+
+``scripts/bench_scenarios.sh`` (root) benchmarks both implementations on the
+same ladder and emits a markdown table (wall time of
+``--topo SPEC --controller none --test pingall`` + ping loss, median/min/max
+over N runs). See :doc:`migration/BENCHMARKS` for methodology; CI uploads the
+table as the ``bench-results`` artifact.

@@ -219,3 +219,18 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   topos, run sims, inspect graphs. Trust model: stdio-only transport, client is
   the local spawning user; never expose over a network transport.
 - **Revisit:** align the graph JSON dialect with mn-tui GraphView (polish task).
+
+## D20 — Rust CLI binary is `mnr`, not `mn`
+- **Decision:** the Rust port installs as `mnr` (package `mnr`, `[[bin]] mnr`)
+  so it never clashes with an installed Python mininet `mn` on the same host.
+  Python `bin/mn` stays `mn`. Scripts use `MN_RUST_BIN` (default
+  `target/release/mnr`); docs distinguish the two explicitly.
+- **Why:** both tools are root network emulators on the same host; same-name
+  binaries would be ambiguous and dangerous (wrong cleanup, wrong cleanup targets).
+
+## D21 — Benchmarks are differential and laddered
+- **Decision:** `scripts/bench_scenarios.sh` benchmarks Python `bin/mn` vs
+  `mnr` on an increasing-complexity ladder (single,3 → linear,10 → tree,3,3),
+  median/min/max wall time of `--test pingall` + ping loss, N runs + warmup,
+  host metadata captured; run only after `diff_topology.sh` MATCHes the same
+  specs (fast-but-wrong is not a win). CI uploads the markdown table.
