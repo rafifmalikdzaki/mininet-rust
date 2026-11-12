@@ -1,9 +1,13 @@
 [package]
-name = "mn-mcp"
+name = "mn-mcp-app"
 version = "0.1.0"
-description = "mn-mcp"
+description = "mn-mcp binary: MCP server exposing graph + simulation tools to AI agents"
 edition.workspace = true
 license.workspace = true
+
+[[bin]]
+name = "mn-mcp"
+path = "src/main.rs"
 
 [dependencies]
 mn-mcp = { path = "../../crates/mcp" }

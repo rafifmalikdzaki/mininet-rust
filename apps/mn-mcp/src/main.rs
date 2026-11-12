@@ -1,1 +1,3 @@
-fn main() { eprintln!("scaffold"); }
+fn main() {
+    eprintln!("scaffold");
+}

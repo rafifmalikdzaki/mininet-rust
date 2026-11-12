@@ -1,9 +1,13 @@
 [package]
-name = "mn-tui"
+name = "mn-tui-app"
 version = "0.1.0"
-description = "mn-tui"
+description = "mn-tui binary: OMO-style live graph TUI for the emulated network"
 edition.workspace = true
 license.workspace = true
+
+[[bin]]
+name = "mn-tui"
+path = "src/main.rs"
 
 [dependencies]
 mn-tui = { path = "../../crates/tui" }
