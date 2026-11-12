@@ -87,3 +87,22 @@ on the differential ladder, all four CI workflows are green including the
 privileged root suite, and the known deviations/limitations are documented
 in DECISIONS.md / ROADMAP.md. The performance gap is measured and has a
 concrete next step (cut per-node spawn cost), so it does not block merge.
+
+## Addendum — rootless container support (D25), head after `c3147a6`
+
+- [ok] `container/Dockerfile` + `container/entrypoint.sh` + `scripts/mnr-container.sh`:
+  verified locally with docker — image builds, wrapper runs
+  `--topo single,3 --test pingall` (0% dropped, 6/6) and
+  `--topo tree,2,2 --dump` (plan). Entrypoint bug found and fixed during
+  verification (double `mnr` arg).
+- [ok] Security: rootless by design — `--privileged` is confined to the
+  container user namespace, no host privilege; image uses apt
+  `--no-install-recommends`, no curl-pipe-shell; no secrets.
+- [ok] `scripts/mnr-container.sh` and `container/entrypoint.sh` pass `sh -n`;
+  `container.yaml` passes actionlint; CI smoke job has a 25-min timeout so it
+  cannot loop the pipeline.
+- [ok] Correctness of the wrapper's arg handling: auto `--switch lxbr` only
+  when the user did not pass `--switch`; runtime auto-detect podman>docker;
+  image auto-build on first run.
+
+VERDICT: Approve (unchanged).

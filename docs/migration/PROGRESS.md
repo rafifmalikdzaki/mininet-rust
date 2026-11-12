@@ -90,9 +90,19 @@ Gates now: 410 passed / 0 failed / 29 ignored (root-gated).
 | 20acb77 | ci: diff harness + benchmarks run with lxbr in the container; step timeouts |
 | 3d7554a | diff_topology: append pingall section to Rust capture; normalize pid=None |
 
+## Rootless containers (D25)
+- `container/Dockerfile` (multi-stage rust builder -> ubuntu:24.04 runtime with
+  mnr/mnexec/mnr-tui/mnr-mcp) + `container/entrypoint.sh` (starts OVS daemons
+  when present) + `scripts/mnr-container.sh` (rootless podman/docker runner;
+  auto `--switch lxbr`; mounts $PWD at /w). No sudo/root on the host — caps are
+  confined to the container user namespace.
+- CI: `.github/workflows/container.yaml` builds the image and runs
+  single,3/linear,4 pingall + tree,2,2 --dump through the wrapper.
+- Verified locally with docker: image builds, `--topo single,3 --test pingall`
+  -> 0% dropped (6/6), `--topo tree,2,2 --dump` -> plan.
+
 ## Next actions
-1. Five-axis reviewer pass over the branch diff (see review verdict in the PR
-   / session), then merge PR #1 (rust-migration -> master on the fork).
+1. Merge PR #1 (rust-migration -> master on the fork) — all 5 workflows green.
 2. Post-merge roadmap: docs/migration/ROADMAP.md (HTB bw via netlink, NOX/Ryu
    stubs, miniedit/cluster/mobility, --innamespace/--custom, perf: cut per-node
    shell spawn cost — see BENCHMARKS.md reading).

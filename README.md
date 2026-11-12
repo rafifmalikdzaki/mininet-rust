@@ -54,6 +54,28 @@ $ target/release/mnr-tui --topo tree,2,2       # OMO-style live graph TUI
 $ target/release/mnr-mcp                        # MCP server for AI agents
 ```
 
+### No root / no sudo: run `mnr` in a rootless container
+
+mininet is netns-based, so containers are the natural virtualization — no VMs,
+no host root. `container/Dockerfile` + `scripts/mnr-container.sh` run `mnr`
+inside a **rootless** podman/docker container (the container's root is mapped
+into a user namespace via subuid; `--privileged` grants `CAP_NET_ADMIN` only
+*inside that namespace*):
+
+```console
+$ sh scripts/mnr-container.sh --topo single,3 --test pingall   # builds image on first run
+$ sh scripts/mnr-container.sh --topo tree,2,2                 # interactive REPL
+$ sh scripts/mnr-container.sh --build                         # rebuild the image
+```
+
+Requirements (one-time, no root): podman with `uidmap` + your user in
+`/etc/subuid`/`/etc/subgid` (most distros ship this), or rootless Docker
+(`dockerd-rootless-setuptool.sh install`). Unless you pass `--switch`
+yourself the wrapper adds `--switch lxbr` (kernel LinuxBridge — rootless
+containers usually cannot load the OVS kernel module on the host). The current
+directory is mounted at `/w`, so dumps/topo files land back on your host. CI
+smoke-tests this path in `.github/workflows/container.yaml`.
+
 Highlights:
 
 - **Byte-exact parity, proven by differential tests** — the Rust suites drive

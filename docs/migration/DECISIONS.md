@@ -349,3 +349,28 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
 - **Verified:** full root suite in a privileged container — everything
   green except the two netem tests, which need sch_netem (absent from the
   sandbox host kernel; they pass on CI's ubuntu-24.04 kernel).
+
+## D25 — rootless operation via containers (no sudo/root on the host)
+
+- **Choice:** containers, not VMs. Mininet emulation is pure network
+  namespaces + veth pairs, which is exactly what a rootless container's user
+  namespace provides (`CAP_NET_ADMIN` inside the userns only). VMs would add
+  a kernel/hypervisor layer for no benefit here — the same lesson containerlab
+  applies (rootless podman). Docker is supported as the fallback runtime.
+- **Mechanism:** `container/Dockerfile` (multi-stage: rust builder → ubuntu:24.04
+  runtime with mnr/mnexec/mnr-tui/mnr-mcp + iproute2/OVS/python3-packaging) and
+  `scripts/mnr-container.sh`, which picks podman (rootless default) or docker,
+  builds the image on first run, and executes
+  `run --rm --privileged [--userns=keep-id] -v $PWD:/w -w /w <img> mnr "$@"`.
+  `--privileged` in rootless mode is confined to the container userns — the
+  host gains no privilege. `--userns=keep-id` (podman) keeps files written to
+  the mounted /w owned by the host user.
+- **Default switch in containers:** the wrapper appends `--switch lxbr`
+  unless the user passed `--switch`, because rootless containers usually
+  cannot load the host's OVS kernel datapath module (kernel LinuxBridge needs
+  no module). `--switch ovs` remains available when the module exists.
+- **CI:** `.github/workflows/container.yaml` builds the image and runs
+  `single,3`/`linear,4` pingall + a `tree,2,2 --dump` through the wrapper on
+  every push/PR (GH runners have passwordless docker).
+- **Verified locally:** image builds; `mnr-container.sh --topo single,3
+  --test pingall` → 0% loss; `--topo tree,2,2 --dump` → plan output.
