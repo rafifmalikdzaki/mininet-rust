@@ -9,6 +9,8 @@
 #   BENCH_TOPOS   space-separated topo specs (default: the ladder below)
 #   BENCH_RUNS    timed runs per scenario per implementation (default 5,
 #                 plus 1 warmup)
+#   BENCH_SWITCH  switch spec for both sides (default: default; use lxbr in
+#                 containers without the OVS kernel datapath module)
 #   MN_RUST_BIN   Rust binary (default target/release/mnr, then debug)
 #   BENCH_OUT     output markdown file (default: stdout only)
 #
@@ -27,6 +29,7 @@ fi
 
 BENCH_TOPOS=${BENCH_TOPOS:-"single,3 linear,4 linear,10 tree,2,2 tree,3,2 tree,3,3"}
 BENCH_RUNS=${BENCH_RUNS:-5}
+BENCH_SWITCH=${BENCH_SWITCH:-default}
 BENCH_OUT=${BENCH_OUT:-}
 
 MN_BIN=""
@@ -56,8 +59,8 @@ median() { printf '%s\n' "$@" | sort -n | awk -v n="$(printf '%s\n' "$@" | wc -l
 run_once() {
     impl=$1; spec=$2
     case $impl in
-        py) cmd="$PY_MN --topo $spec --controller none --test pingall" ;;
-        rs) cmd="$MN_BIN --topo $spec --controller none --test pingall" ;;
+        py) cmd="$PY_MN --topo $spec --switch $BENCH_SWITCH --controller none --test pingall" ;;
+        rs) cmd="$MN_BIN --topo $spec --switch $BENCH_SWITCH --controller none --test pingall" ;;
     esac
     t0=$(now_ns)
     # shellcheck disable=SC2086

@@ -135,13 +135,21 @@ jobs:
       #    scripts/diff_topology.sh across the increasing-complexity ladder
       #    (single,3 ... tree,3,3), diffing the normalized Python reference
       #    dump vs the Rust `mnr --dump` output (MATCH/MISMATCH per spec).
-      #    Exits non-zero on any failure.
+      #    Exits non-zero on any failure. lxbr: this container has no OVS
+      #    kernel datapath module, so use the kernel LinuxBridge on both
+      #    sides (OVS itself is covered by the VM workflows).
       - name: Full root suite + differential topology harness
+        timeout-minutes: 25
+        env:
+          DIFF_MN_SWITCH: lxbr
         run: sh scripts/run_root_tests.sh
 
       # 3. Differential benchmark ladder: Python bin/mn vs Rust mnr on the
       #    same scenario ladder; markdown table uploaded as an artifact.
       - name: Benchmark scenarios (python mn vs rust mnr)
+        timeout-minutes: 20
+        env:
+          BENCH_SWITCH: lxbr
         run: sh scripts/bench_scenarios.sh > bench-results.md
       - name: Upload benchmark table
         uses: actions/upload-artifact@v4
