@@ -191,6 +191,11 @@ function mn_deps {
                 pf=pyflakes3
                 pep8=python3-pep8
         fi
+        # Ubuntu 24.04 dropped the legacy 'pep8' apt package entirely
+        # (renamed pycodestyle); code-check installs pep8 via pip there.
+        if [ "$DIST" = "Ubuntu" -a `expr $RELEASE '>=' 24.04` = "1" ]; then
+                pep8=python3-pycodestyle
+        fi
 
         $install gcc make socat psmisc xterm ssh iperf telnet \
                  ethtool help2man $pf pylint $pep8 \
