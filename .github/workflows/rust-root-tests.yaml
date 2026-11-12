@@ -40,15 +40,43 @@ jobs:
       # Python reference side needs: python3, ip (iproute2), ifconfig
       # (net-tools), mnexec (built below from mnexec.c), ovs-vsctl
       # (openvswitch-switch, default switch class OVSSwitch), brctl
-      # (bridge-utils), ethtool (link status). Rust side needs cargo only.
+      # (bridge-utils), ethtool (link status), iptables (NAT tests).
+      # Rust side needs cargo only (plus iptables for the NAT root test).
       - name: Install host dependencies (apt only, no pip)
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             ca-certificates curl \
-            python3 iproute2 net-tools bridge-utils ethtool \
-            openvswitch-switch gcc make libc6-dev
+            python3 iproute2 net-tools bridge-utils ethtool iptables \
+            iputils-ping openvswitch-switch openvswitch-testcontroller \
+            gcc make libc6-dev
           python3 --version
+
+      # mininet runs `controller [-v] ptcp:6653` for the default controller;
+      # shim it with OVS's ovs-testcontroller (the OpenFlow reference-switch
+      # patch path does not exist in this tree). Same shim as run-tests.yaml.
+      - name: Shim `controller` with ovs-testcontroller
+        run: |
+          if ! which controller >/dev/null 2>&1; then
+            tee /usr/local/bin/controller >/dev/null <<'SHIM'
+          #!/bin/sh
+          args=""
+          for a in "$@"; do [ "$a" = "-v" ] && continue; args="$args $a"; done
+          exec ovs-testcontroller $args
+          SHIM
+            chmod +x /usr/local/bin/controller
+          fi
+          which controller
+
+      # The cgroup-v2 host test writes cpu.max under /sys/fs/cgroup; make
+      # sure the cgroup2 mount is writable in this privileged container.
+      - name: Ensure writable cgroup2 mount
+        run: |
+          mount -t cgroup2 none /sys/fs/cgroup 2>/dev/null \
+            || mount -o remount,rw /sys/fs/cgroup 2>/dev/null \
+            || true
+          touch /sys/fs/cgroup/.rw-probe 2>/dev/null && rm -f /sys/fs/cgroup/.rw-probe \
+            && echo "cgroup2 writable" || echo "cgroup2 NOT writable (cgroup test may skip/fail)"
 
       - uses: dtolnay/rust-toolchain@stable
         # rust-toolchain.toml pins channel = "stable"; Cargo.lock is committed.
