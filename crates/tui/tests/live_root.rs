@@ -6,7 +6,7 @@
 //! `MN_RUST_ROOT_TESTS=1 cargo test -p mn-tui -- --ignored --test-threads=1`
 
 use mn_net::{Mininet, MininetOptions};
-use mnr_tui::{EdgeStatus, GraphView, NodeStatus};
+use mnr_tui::{EdgeStatus, GraphView, NodeKind, NodeStatus};
 
 fn root_tests_enabled() -> bool {
     std::env::var("MN_RUST_ROOT_TESTS").is_ok_and(|v| v == "1")
@@ -32,11 +32,14 @@ fn live_single3_graph_reports_up() {
         assert_eq!(g.nodes.len(), 4);
         for n in &g.nodes {
             assert_eq!(n.status, NodeStatus::Up, "node {} should be up", n.id);
-            assert!(
-                n.detail.as_ref().unwrap().pid.is_some(),
-                "node {} should have a pid",
-                n.id
-            );
+            // hosts have a shell pid; the root-ns lxbr switch has none
+            if n.kind == NodeKind::Host {
+                assert!(
+                    n.detail.as_ref().unwrap().pid.is_some(),
+                    "host {} should have a pid",
+                    n.id
+                );
+            }
         }
         assert_eq!(g.edges.len(), 3);
         for e in &g.edges {

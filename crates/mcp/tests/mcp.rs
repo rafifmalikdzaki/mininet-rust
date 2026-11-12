@@ -357,10 +357,12 @@ fn root_live_net_start_pingall_stop_release() {
     let mut server = Server::new();
     let mut buf = String::new();
     // minimal = h1-h2 direct link, no switch/controller binaries needed
+    // lxbr = kernel LinuxBridge: works without the OVS kernel datapath
+    // module (which privileged CI containers cannot load).
     buf.push_str(&call(
         1,
         "net_build",
-        json!({"spec": "minimal", "opts": {"controller": "none"}}),
+        json!({"spec": "minimal", "opts": {"controller": "none", "switch": "lxbr"}}),
     ));
     buf.push_str(&call(2, "net_start", json!({})));
     buf.push_str(&call(3, "pingall", json!({})));
@@ -395,7 +397,10 @@ fn root_live_net_start_pingall_stop_release() {
     assert_eq!(g["live"], true);
     for n in g["nodes"].as_array().unwrap() {
         assert_eq!(n["status"], "up", "{n}");
-        assert!(n["detail"]["pid"].is_number(), "{n}");
+        // hosts have a shell pid; the root-ns lxbr switch has none
+        if n["kind"] == "host" {
+            assert!(n["detail"]["pid"].is_number(), "{n}");
+        }
     }
     // host_cmd ran inside h1's namespace
     assert!(text_of(&msgs[5]).contains("hello-from-h1"));

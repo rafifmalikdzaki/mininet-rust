@@ -32,6 +32,10 @@ fn root_repl_interactive_loop_single3() {
         MininetOptions {
             controller: None,
             listen_port: Some(6654),
+            // lxbr = kernel LinuxBridge: works in a privileged container
+            // without the OVS kernel datapath module (which GH containers
+            // cannot load); OVS is exercised by switch::tests::ovs_*.
+            switch_spec: "lxbr".to_string(),
             ..Default::default()
         },
     )
@@ -58,7 +62,12 @@ fn root_repl_interactive_loop_single3() {
         out.contains("<Host h1: h1-eth0:10.0.0.1 pid="),
         "out: {out:?}"
     );
-    assert!(!out.contains("pid=None"), "out: {out:?}");
+    // hosts have real pids; the root-ns LinuxBridge switch has no shell, so
+    // its repr shows pid=None (same as Python's lxbr dump).
+    assert!(
+        out.contains("<LinuxBridge s1: lo:127.0.0.1,"),
+        "out: {out:?}"
+    );
     // links report OK after attach
     assert!(out.contains("h1-eth0<->s1-eth1 (OK OK) \n"), "out: {out:?}");
     // pingall: 6 pings on single,3, 0% loss; ping h1 h2: 2 pings, 0% loss
@@ -80,12 +89,14 @@ fn root_single3_pingall_end_to_end() {
         return;
     }
     // mn --topo single,3 --controller none --test pingall: build, start
-    // (OVSSwitch via the SwitchKind seam), pingall, stop.
+    // (lxbr LinuxBridge: works without the OVS kernel datapath), pingall, stop.
     let output = run_mn(&[
         "--topo",
         "single,3",
         "--controller",
         "none",
+        "--switch",
+        "lxbr",
         "--test",
         "pingall",
     ]);
@@ -113,7 +124,15 @@ fn root_single3_dump_real_start_shows_pids_and_ok_links() {
         return;
     }
     // Root --dump: real start -> dump has real pids, links report OK OK.
-    let output = run_mn(&["--topo", "single,3", "--controller", "none", "--dump"]);
+    let output = run_mn(&[
+        "--topo",
+        "single,3",
+        "--controller",
+        "none",
+        "--switch",
+        "lxbr",
+        "--dump",
+    ]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -122,8 +141,13 @@ fn root_single3_dump_real_start_shows_pids_and_ok_links() {
         output.status.code()
     );
     assert!(
-        stdout.contains("<OVSSwitch s1: lo:127.0.0.1,") && !stdout.contains("pid=None"),
-        "root dump should have real pids, stdout: {stdout}"
+        stdout.contains("<LinuxBridge s1: lo:127.0.0.1,"),
+        "root dump should show the lxbr switch, stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("<Host h1: h1-eth0:10.0.0.1 pid=")
+            && !stdout.contains("<Host h1: h1-eth0:10.0.0.1 pid=None"),
+        "root dump should have real host pids, stdout: {stdout}"
     );
     assert!(
         stdout.contains("h1-eth0<->s1-eth1 (OK OK)"),
@@ -149,6 +173,10 @@ fn root_10d_passthrough_link_wait_on_started_net() {
         MininetOptions {
             controller: None,
             listen_port: Some(6654),
+            // lxbr = kernel LinuxBridge: works in a privileged container
+            // without the OVS kernel datapath module (which GH containers
+            // cannot load); OVS is exercised by switch::tests::ovs_*.
+            switch_spec: "lxbr".to_string(),
             ..Default::default()
         },
     )
@@ -183,9 +211,11 @@ fn root_10d_passthrough_link_wait_on_started_net() {
         err.contains("*** Unknown command: nope cmd\n"),
         "err: {err:?}"
     );
-    // link down/up ran real ifconfig (no warn lines, no failure lines)
+    // link down/up ran real ifconfig on the host end (no failure lines); the
+    // root-ns switch end has no shell, so Python's lxbr also warns
+    // "(s1 exited - ignoring cmd(...))" for it — only h1 must not warn.
     assert!(!err.contains("status change failed"), "err: {err:?}");
-    assert!(!out.contains("exited - ignoring"), "out: {out:?}");
+    assert!(!out.contains("(h1 exited"), "out: {out:?}");
     // links still render OK OK (Python's Intf.status() only checks existence)
     assert!(out.contains("h1-eth0<->s1-eth1 (OK OK) \n"), "out: {out:?}");
 }
@@ -245,6 +275,8 @@ fn root_10d_xterms_flag_no_display_errors_cleanly() {
             "single,3",
             "--controller",
             "none",
+            "--switch",
+            "lxbr",
             "--xterms",
             "--test",
             "none",
