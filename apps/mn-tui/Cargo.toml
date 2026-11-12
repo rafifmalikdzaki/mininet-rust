@@ -1,0 +1,10 @@
+[package]
+name = "mn-tui"
+version = "0.1.0"
+description = "mn-tui"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-tui = { path = "../../crates/tui" }
+mn-net = { path = "../../crates/net" }

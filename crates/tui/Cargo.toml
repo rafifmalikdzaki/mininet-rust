@@ -1,0 +1,11 @@
+[package]
+name = "mn-tui"
+version = "0.1.0"
+description = "mn-tui"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-net = { path = "../net" }
+mn-topo = { path = "../topo" }
+mn-util = { path = "../util" }

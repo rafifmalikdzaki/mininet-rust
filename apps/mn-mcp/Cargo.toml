@@ -1,0 +1,10 @@
+[package]
+name = "mn-mcp"
+version = "0.1.0"
+description = "mn-mcp"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-mcp = { path = "../../crates/mcp" }
+mn-net = { path = "../../crates/net" }
