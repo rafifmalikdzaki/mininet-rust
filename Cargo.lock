@@ -276,6 +276,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mn-net"
+version = "0.1.0"
+dependencies = [
+ "mn-link",
+ "mn-netlink",
+ "mn-node",
+ "mn-topo",
+ "mn-util",
+]
+
+[[package]]
 name = "mn-netlink"
 version = "0.1.0"
 dependencies = [
