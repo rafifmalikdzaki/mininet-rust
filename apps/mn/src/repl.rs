@@ -121,7 +121,10 @@
 //!   golden exists there — on a started net both produce real rtt lines).
 //! - On a dry-run net, `ping`/`iperf`/`dpctl` fail with the node/shell error;
 //!   the repl reports them as `*** <cmd> failed: <err>` on `err` (Python has
-//!   no equivalent line — a shell-less net crashes its CLI).
+//!   no equivalent line — a shell-less net crashes its CLI). `switch <sw>
+//!   start|stop` on a dry-run net is instead a **silent no-op** — a dry-run
+//!   must never spawn subprocesses (`ovs-vsctl del-br` could delete a real
+//!   bridge on the host).
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
@@ -799,6 +802,13 @@ fn do_switch(net: &mut Mininet, arg: &str, io: &mut Io) {
     }
     let name = sw.to_string();
     match command {
+        "start" | "stop" if !net.is_started() => {
+            // On a not-started (dry-run) net, switch start/stop are silent
+            // no-ops. Python crashes on the shell-less node here (no golden
+            // exists), but more importantly a dry-run must never spawn
+            // subprocesses: `ovs-vsctl --if-exists del-br <name>` on the host
+            // could delete a *real* bridge. (deviation_10d_switch_start_stop_dry_run_silent)
+        }
         "start" => {
             // self.mn.get( sw ).start( self.mn.controllers ) — disjoint field
             // borrows: controllers (immutable) + switches (mutable).

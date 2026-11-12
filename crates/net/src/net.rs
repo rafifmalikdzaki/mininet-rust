@@ -120,6 +120,9 @@ pub struct Mininet {
     name_to_node: NameToNode,
     /// `self.built`.
     pub built: bool,
+    /// Whether [`Mininet::start`] completed. False for dry-run/model nets,
+    /// which must never spawn subprocesses or touch the kernel.
+    started: bool,
 }
 
 impl Mininet {
@@ -166,6 +169,7 @@ impl Mininet {
             links: Vec::new(),
             name_to_node: NameToNode::new(),
             built: false,
+            started: false,
         };
         if net.topo.is_some() && opts.build {
             net.build()?;
@@ -705,7 +709,15 @@ impl Mininet {
             // timeout warns inside wait_connected_switches, not errors.
             let _ = self.wait_connected_switches();
         }
+        self.started = true;
         Ok(())
+    }
+
+    /// Whether [`Mininet::start`] has completed. Dry-run nets
+    /// ([`Mininet::dry_run`]) are built but never started, so operations on
+    /// them must stay model-only (no subprocesses, no kernel calls).
+    pub fn is_started(&self) -> bool {
+        self.started
     }
 
     /// Port of `Mininet.waitConnected`: wait until all switches report
@@ -818,6 +830,7 @@ impl Mininet {
         }
         eprintln!("\n*** Done");
         self.built = false;
+        self.started = false;
         if let Some(e) = errs.into_iter().next() {
             return Err(e);
         }
