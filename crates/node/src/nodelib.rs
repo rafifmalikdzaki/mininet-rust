@@ -9,23 +9,20 @@
 //! the Rust port creates the bridge and enslaves veths with **rtnetlink
 //! messages**:
 //!
-//! - [`bridge_add_msg`] — `RTM_NEWLINK` creating `type bridge` (optionally
-//!   with STP state + priority, i.e. `brctl stp on`/`setbridgeprio`);
-//! - [`enslave_msg`] / [`disenslave_msg`] — `IFLA_MASTER` set/clear
-//!   (`brctl addif`/`delif`);
-//! - [`link_up_msg`] — up/down (`ifconfig <dev> up|down`).
+//! - [`mn_netlink::bridge_add_msg`] — `RTM_NEWLINK` creating `type bridge`
+//!   (optionally with STP state + priority, i.e. `brctl stp
+//!   on`/`setbridgeprio`);
+//! - [`mn_netlink::enslave_msg`] / [`mn_netlink::disenslave_msg`] —
+//!   `IFLA_MASTER` set/clear (`brctl addif`/`delif`);
+//! - [`mn_netlink::link_up_msg`] — up/down (`ifconfig <dev> up|down`).
 //!
-//! All message builders are **pure and unit-tested**; the real netlink
-//! ops run in [`LinuxBridge::start`]/[`stop`]/[`attach`]/[`detach`] through
-//! a small local [`BridgeNl`] facade and are root-gated in tests
-//! (`#[ignore]` + `MN_RUST_ROOT_TESTS=1`).
-//!
-//! Deviation (documented): the bridge link-type/enclave ops live in this
-//! crate rather than in `mn-netlink`, because `crates/netlink` is owned by
-//! another work stream and does not expose raw-link messages yet; they can
-//! be upstreamed into `mn-netlink` later. `mn-netlink`'s fork-safety
-//! primitives (`check_fork_safety`, `setns_path_raw`) are reused for the
-//! in-namespace path ([`run_bridge_in_netns`]).
+//! The bridge link ops live upstream in `mn-netlink` (`mn_netlink::bridge`
+//! items, re-exported at its root): all message builders are **pure and
+//! unit-tested** there; the real netlink ops run in
+//! [`LinuxBridge::start`]/[`stop`]/[`attach`]/[`detach`] through the
+//! [`mn_netlink::BridgeNl`] facade (and `mn_netlink::run_bridge_in_netns`
+//! for the in-namespace path) and are root-gated in tests (`#[ignore]` +
+//! `MN_RUST_ROOT_TESTS=1`).
 //!
 //! # NAT
 //!
@@ -52,267 +49,23 @@
 //! network-manager does not DHCP-manage the external interface.
 
 use std::collections::BTreeMap;
-use std::ffi::CString;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU16, Ordering};
 
-use futures::StreamExt;
-use netlink_packet_route::link::{
-    BridgePortState, BridgeStpState, InfoBridge, InfoBridgePort, InfoData, InfoPortData,
-    LinkAttribute, LinkInfo, LinkMessage,
+// The bridge netlink plumbing (message builders + BridgeNl facade +
+// run_bridge_in_netns) lives upstream in mn-netlink and is re-exported
+// here; the raw packet types come via mn_netlink::link_packet so this
+// crate needs no direct rtnetlink/netlink-packet-route dependency.
+use mn_netlink::{
+    any_port_forwarding, bridge_add_msg, disenslave_msg, enslave_msg, enslaved_port_states,
+    link_up_msg, msg_ifname, run_bridge_in_netns, BridgeNl,
 };
-use rtnetlink::{LinkBridge, LinkMessageBuilder, LinkUnspec};
 
 use crate::controller::Controller;
 use crate::error::{Error, Result};
 use crate::host::Host;
 use crate::switch::Switch;
-
-// ---------------------------------------------------------------------
-// BridgeNl — minimal sync rtnetlink facade for Linux-bridge link ops
-// ---------------------------------------------------------------------
-
-/// Synchronous rtnetlink facade for the bridge link operations
-/// (`type bridge` create, `IFLA_MASTER` enslave, up/down, delete).
-///
-/// Same shape as `mn_netlink::Netlink` (an internal current-thread tokio
-/// runtime driving the rtnetlink connection) — kept local to this module
-/// because `mn-netlink` does not expose its raw handle (see module docs).
-#[derive(Debug)]
-pub struct BridgeNl {
-    rt: tokio::runtime::Runtime,
-    handle: rtnetlink::Handle,
-}
-
-fn nl_err(e: rtnetlink::Error) -> Error {
-    Error::Other(format!("rtnetlink: {e}"))
-}
-
-impl BridgeNl {
-    /// Open a `NETLINK_ROUTE` socket and spawn the connection driver on an
-    /// internal current-thread tokio runtime. Opening the socket needs no
-    /// privileges.
-    pub fn new() -> Result<Self> {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| Error::Other(format!("tokio runtime: {e}")))?;
-        Self::from_runtime(rt)
-    }
-
-    /// Build a facade on an existing current-thread runtime. Fork children
-    /// must not *create* a runtime after fork(2), so the runtime is built
-    /// before the fork and moved in — see [`run_bridge_in_netns`].
-    pub fn from_runtime(rt: tokio::runtime::Runtime) -> Result<Self> {
-        let handle = rt.block_on(async {
-            let (connection, handle, _messages) = rtnetlink::new_connection()
-                .map_err(|e| Error::Other(format!("netlink socket: {e}")))?;
-            tokio::spawn(connection);
-            Ok::<rtnetlink::Handle, Error>(handle)
-        })?;
-        Ok(Self { rt, handle })
-    }
-
-    fn run<F: std::future::Future>(&self, fut: F) -> F::Output {
-        self.rt.block_on(fut)
-    }
-
-    /// Dump all links (`RTM_GETLINK`, like `ip link show`). Works
-    /// unprivileged.
-    pub fn link_msgs(&self) -> Result<Vec<LinkMessage>> {
-        self.run(async {
-            let mut stream = self.handle.link().get().execute();
-            let mut out = Vec::new();
-            while let Some(msg) = stream.next().await {
-                out.push(msg.map_err(nl_err)?);
-            }
-            Ok::<Vec<LinkMessage>, Error>(out)
-        })
-    }
-
-    /// Kernel index of interface `name`, or `None` (`ip link show dev
-    /// <name>`; we dump and filter in userspace like mn-netlink does).
-    pub fn link_index(&self, name: &str) -> Result<Option<u32>> {
-        Ok(self
-            .link_msgs()?
-            .into_iter()
-            .find(|m| msg_ifname(m) == Some(name))
-            .map(|m| m.header.index))
-    }
-
-    /// `RTM_NEWLINK` create — `handle.link().add(msg)`.
-    pub fn link_add(&self, msg: LinkMessage) -> Result<()> {
-        self.run(async { self.handle.link().add(msg).execute().await })
-            .map_err(nl_err)?;
-        Ok(())
-    }
-
-    /// `RTM_NEWLINK` modify — `handle.link().set(msg)` (up/down, master).
-    pub fn link_set(&self, msg: LinkMessage) -> Result<()> {
-        self.run(async { self.handle.link().set(msg).execute().await })
-            .map_err(nl_err)?;
-        Ok(())
-    }
-
-    /// `RTM_DELLINK` by index — `handle.link().del(idx)`.
-    pub fn link_del(&self, index: u32) -> Result<()> {
-        self.run(async { self.handle.link().del(index).execute().await })
-            .map_err(nl_err)?;
-        Ok(())
-    }
-}
-
-/// Run `f` with a fresh [`BridgeNl`] **inside the netns of `pid`** — the
-/// bridge-op equivalent of [`mn_netlink::run_in_netns`]: forks a child
-/// that `setns(2)`es into `/proc/<pid>/ns/net`, opens the netlink socket on
-/// a pre-fork runtime, runs `f`, and exits 0/1; the parent `waitpid(2)`s.
-/// Requires root / `CAP_SYS_ADMIN`.
-fn run_bridge_in_netns<F>(pid: u32, f: F) -> Result<()>
-where
-    F: FnOnce(&BridgeNl) -> Result<()>,
-{
-    mn_netlink::check_fork_safety().map_err(Error::Netlink)?;
-    let c_path = CString::new(format!("/proc/{pid}/ns/net"))
-        .map_err(|_| Error::InvalidInput(format!("bad ns path for pid {pid}")))?;
-    // The runtime is built pre-fork and moved into the child.
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| Error::Other(format!("tokio runtime: {e}")))?;
-    // SAFETY: the child branch calls only setns_path_raw (open+setns+close
-    // on the pre-allocated CString), BridgeNl::from_runtime (socket setup
-    // on the pre-fork runtime), f, and libc::_exit — no allocation after
-    // fork(2); check_fork_safety gates the single-threaded precondition.
-    // The parent branch only calls waitpid.
-    let child = unsafe { nix::unistd::fork() }.map_err(|e| Error::Other(format!("fork: {e}")))?;
-    match child {
-        nix::unistd::ForkResult::Child => {
-            let rc = (|| -> Result<i32> {
-                mn_netlink::setns_path_raw(&c_path).map_err(Error::Netlink)?;
-                let nl = BridgeNl::from_runtime(rt)?;
-                f(&nl)?;
-                Ok(0)
-            })();
-            let code = rc.unwrap_or(1);
-            // SAFETY: raw syscall only.
-            unsafe { libc::_exit(code) }
-        }
-        nix::unistd::ForkResult::Parent { child } => {
-            use nix::sys::wait::{waitpid, WaitStatus};
-            let status = waitpid(child, None).map_err(|e| Error::Other(format!("waitpid: {e}")))?;
-            match status {
-                WaitStatus::Exited(_, 0) => Ok(()),
-                WaitStatus::Exited(_, code) => Err(Error::Other(format!(
-                    "bridge netlink op inside netns of pid {pid} failed (exit code {code})"
-                ))),
-                other => Err(Error::Other(format!(
-                    "bridge netlink child for pid {pid} ended unexpectedly: {other:?}"
-                ))),
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------
-// Pure rtnetlink message builders (unit-tested; no kernel access)
-// ---------------------------------------------------------------------
-
-/// Interface name of a link message (`IFLA_IFNAME`).
-pub fn msg_ifname(msg: &LinkMessage) -> Option<&str> {
-    msg.attributes.iter().find_map(|a| match a {
-        LinkAttribute::IfName(n) => Some(n.as_str()),
-        _ => None,
-    })
-}
-
-/// The `InfoBridge` attribute list of a link message (`IFLA_INFO_DATA`
-/// under `type bridge`), if any.
-pub fn msg_bridge_data(msg: &LinkMessage) -> Option<&Vec<InfoBridge>> {
-    msg.attributes.iter().find_map(|a| match a {
-        LinkAttribute::LinkInfo(infos) => infos.iter().find_map(|i| match i {
-            LinkInfo::Data(InfoData::Bridge(b)) => Some(b),
-            _ => None,
-        }),
-        _ => None,
-    })
-}
-
-/// `RTM_NEWLINK` creating a Linux bridge named `name` — the netlink form
-/// of `brctl addbr <name>` (`ip link add name <name> type bridge`).
-///
-/// The bridge is created **down**, like `brctl addbr`;
-/// [`LinuxBridge::start`] brings it up at the end (`ifconfig <br> up`).
-/// With `stp`, the message also carries `IFLA_BR_STP_STATE=1` (kernel STP,
-/// `brctl stp <br> on`) and `IFLA_BR_PRIORITY` (`brctl setbridgeprio`).
-pub fn bridge_add_msg(name: &str, stp: bool, prio: u16) -> Result<LinkMessage> {
-    mn_netlink::validate_ifname(name)?;
-    let builder = LinkMessageBuilder::<LinkBridge>::new(name);
-    let builder = if stp {
-        builder.stp_state(BridgeStpState::KernelStp).priority(prio)
-    } else {
-        builder
-    };
-    Ok(builder.build())
-}
-
-/// `RTM_NEWLINK` bringing link `index` up/down — `ifconfig <dev> up|down`.
-pub fn link_up_msg(index: u32, up: bool) -> LinkMessage {
-    let builder = LinkUnspec::new_with_index(index);
-    if up {
-        builder.up().build()
-    } else {
-        builder.down().build()
-    }
-}
-
-/// `RTM_NEWLINK` enslaving port `port` to bridge `br` — `brctl addif <br>
-/// <port>` == `ip link set <port> master <br>` (`IFLA_MASTER`).
-pub fn enslave_msg(port: u32, br: u32) -> LinkMessage {
-    LinkUnspec::new_with_index(port).controller(br).build()
-}
-
-/// `RTM_NEWLINK` releasing port `port` from its master — `brctl delif`
-/// (`IFLA_MASTER = 0`, `ip link set <port> nomaster`).
-pub fn disenslave_msg(port: u32) -> LinkMessage {
-    LinkUnspec::new_with_index(port).nocontroller().build()
-}
-
-/// STP port states of all links enslaved to bridge `br_idx` in a link dump
-/// (links with `IFLA_MASTER == br_idx` and bridge port data). This is the
-/// netlink equivalent of the per-port states in `brctl showstp <br>`.
-pub fn enslaved_port_states(msgs: &[LinkMessage], br_idx: u32) -> Vec<BridgePortState> {
-    let mut states = Vec::new();
-    for msg in msgs {
-        let master = msg.attributes.iter().find_map(|a| match a {
-            LinkAttribute::Controller(idx) => Some(*idx),
-            _ => None,
-        });
-        if master != Some(br_idx) {
-            continue;
-        }
-        for attr in &msg.attributes {
-            if let LinkAttribute::LinkInfo(infos) = attr {
-                for info in infos {
-                    if let LinkInfo::PortData(InfoPortData::BridgePort(ports)) = info {
-                        for p in ports {
-                            if let InfoBridgePort::State(s) = p {
-                                states.push(*s);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    states
-}
-
-/// Python's `'forwarding' in self.cmd('brctl showstp', self)`: any enslaved
-/// port in the forwarding state.
-pub fn any_port_forwarding(states: &[BridgePortState]) -> bool {
-    states.contains(&BridgePortState::Forwarding)
-}
 
 // ---------------------------------------------------------------------
 // LinuxBridge
@@ -430,7 +183,7 @@ impl LinuxBridge {
                 .iter()
                 .find(|m| msg_ifname(m) == Some(name.as_str()))
                 .map(|m| m.header.index)
-                .ok_or_else(|| Error::Other(format!("{name}: no such bridge")))?;
+                .ok_or_else(|| mn_netlink::Error::Other(format!("{name}: no such bridge")))?;
             result = any_port_forwarding(&enslaved_port_states(&msgs, br_idx));
             Ok(())
         })?;
@@ -466,7 +219,7 @@ impl LinuxBridge {
             nl.link_add(bridge_add_msg(&name, stp, prio)?)?;
             let br_idx = nl
                 .link_index(&name)?
-                .ok_or_else(|| Error::Other(format!("{name}: bridge not created")))?;
+                .ok_or_else(|| mn_netlink::Error::Other(format!("{name}: bridge not created")))?;
             // `brctl addif <br> <intf>` for our own interfaces
             for port in &ports {
                 if let Some(pidx) = nl.link_index(port)? {
@@ -502,10 +255,10 @@ impl LinuxBridge {
         self.with_bridge_nl(|nl| {
             let br_idx = nl
                 .link_index(&br)?
-                .ok_or_else(|| Error::Other(format!("{br}: no such bridge")))?;
+                .ok_or_else(|| mn_netlink::Error::Other(format!("{br}: no such bridge")))?;
             let pidx = nl
                 .link_index(&intf)?
-                .ok_or_else(|| Error::Other(format!("no such interface: {intf}")))?;
+                .ok_or_else(|| mn_netlink::Error::Other(format!("no such interface: {intf}")))?;
             nl.link_set(enslave_msg(pidx, br_idx))?;
             nl.link_set(link_up_msg(pidx, true))?;
             Ok(())
@@ -536,18 +289,19 @@ impl LinuxBridge {
 
     /// Run `f` with a [`BridgeNl`] in the switch's namespace: the root
     /// namespace for `in_namespace=false` switches, else the node's netns
-    /// via [`run_bridge_in_netns`] (requires a started node).
+    /// via [`run_bridge_in_netns`] (requires a started node). `f` works in
+    /// `mn_netlink::Result`; errors surface here as [`Error::Netlink`].
     fn with_bridge_nl<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnOnce(&BridgeNl) -> Result<()>,
+        F: FnOnce(&BridgeNl) -> mn_netlink::Result<()>,
     {
         let node = self.switch.node_mut();
         match (node.in_namespace, node.pid()) {
-            (true, Some(pid)) => run_bridge_in_netns(pid, f),
+            (true, Some(pid)) => run_bridge_in_netns(pid, f).map_err(Error::Netlink),
             (true, None) => Err(Error::NotRunning(node.name.clone())),
             (false, _) => {
-                let nl = BridgeNl::new()?;
-                f(&nl)
+                let nl = BridgeNl::new().map_err(Error::Netlink)?;
+                f(&nl).map_err(Error::Netlink)
             }
         }
     }
@@ -942,7 +696,13 @@ mod tests {
     use super::*;
     use crate::root_tests_enabled;
     use mn_link::Intf;
-    use netlink_packet_route::link::{InfoKind, LinkFlags};
+    // Test-only names via the mn-netlink re-exports (so this crate needs no
+    // direct netlink-packet-route dependency).
+    use mn_netlink::link_packet::{
+        BridgePortState, BridgeStpState, InfoBridge, InfoBridgePort, InfoKind, InfoPortData,
+        LinkAttribute, LinkFlags, LinkInfo, LinkMessage,
+    };
+    use mn_netlink::msg_bridge_data;
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()

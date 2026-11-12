@@ -1,5 +1,5 @@
-//! Miscellaneous pure helpers from `mininet/util.py`: `irange`, `numCores`
-//! and `retry`.
+//! Miscellaneous pure helpers from `mininet/util.py`: `irange`, `numCores`,
+//! `retry`, and the canonical `is_root` check.
 
 use std::ops::RangeInclusive;
 use std::sync::OnceLock;
@@ -25,6 +25,30 @@ pub fn num_cores() -> usize {
             .map(|content| content.lines().filter(|l| l.contains("processor")).count())
             .unwrap_or(0)
     })
+}
+
+/// Whether the process runs as root (effective uid == 0) — the gate for
+/// every kernel/system-mutating operation (`mn --clean`, node `start`,
+/// ...), Python's `ensureRoot()`.
+///
+/// This is the **canonical** implementation: `mn-net` re-exports it as
+/// `mn_net::is_root` and `mn-node` calls it instead of parsing
+/// `/proc/self/status` or calling `geteuid(2)` again.
+///
+/// Read from `/proc/self/status` (`Uid: <real> <effective> ...`) so this
+/// crate needs no direct libc dependency (like [`num_cores`] reads
+/// `/proc/cpuinfo` directly); unreadable `/proc` fails closed (non-root).
+pub fn is_root() -> bool {
+    match std::fs::read_to_string("/proc/self/status") {
+        Ok(status) => {
+            status
+            .lines()
+            .find_map(|line| line.strip_prefix("Uid:"))
+            .and_then(|rest| rest.split_whitespace().nth(1)) // effective uid
+            == Some("0")
+        }
+        Err(_) => false,
+    }
 }
 
 /// Port of `retry(retries, delaySecs, fn, *args, **kwargs)`.

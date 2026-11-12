@@ -29,10 +29,12 @@
 //!   with TODO `start()`. [`CPULimitedHost`] applies its CPU limit through
 //!   cgroup v2 `cpu.max` file writes (no netlink; apply is root-gated).
 //! - [`nodelib`] (nodelib.py): [`LinuxBridge`] creates the Linux bridge
-//!   over rtnetlink (`bridge_add_msg`/`enslave_msg`/... pure builders,
-//!   real ops root-gated) instead of `brctl`; [`NAT`] keeps the iptables
+//!   over rtnetlink (builders/facade upstream in `mn-netlink`:
+//!   `mn_netlink::bridge_add_msg`/`enslave_msg`/`BridgeNl`/...; real ops
+//!   root-gated) instead of `brctl`; [`NAT`] keeps the iptables
 //!   rule set as retained `iptables`/`sysctl` subprocesses (no stable
-//!   netlink API for iptables) with pure, unit-tested argv builders.
+//!   netlink API for iptables) with pure, unit-tested argv builders in
+//!   [`nodelib`].
 //!
 //! # Namespace lifecycle
 //!
@@ -129,14 +131,11 @@ pub use mnexec::{
     send_cmd_line, shell_argv, which, which_in, PROMPT_SENTINEL,
 };
 pub use node::{run_in_netns, CmdOutput, Node};
-pub use nodelib::{
-    any_port_forwarding, bridge_add_msg, disenslave_msg, enslave_msg, enslaved_port_states,
-    iptables_flush_argv, iptables_flush_nat_argv, iptables_policy_argv, link_up_msg,
-    manual_config_line, manual_config_needed, msg_bridge_data, msg_ifname,
-    nat_forward_accept_dst_argv, nat_forward_accept_src_argv, nat_forward_drop_argv,
-    nat_masquerade_argv, sysctl_read_ip_forward_argv, sysctl_write_ip_forward_argv, BridgeNl,
-    LinuxBridge, NatOp, NAT, NETWORK_INTERFACES,
-};
+// Only the nodelib *types* are re-exported flat; the pure argv/message
+// builders and test helpers stay reachable via `pub mod nodelib`
+// (e.g. `mn_node::nodelib::nat_masquerade_argv`, and the bridge netlink
+// plumbing via `mn_netlink`).
+pub use nodelib::{LinuxBridge, NatOp, NAT};
 pub use switch::{
     bridge_opts, controller_target, controller_uuids_update, default_dpid, default_dpid_len,
     dpctl_listen_addr, intf_opts_args, is_old_ovs_version, ivs_logfile, ivs_start_argv,

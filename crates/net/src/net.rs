@@ -1031,7 +1031,7 @@ mod tests {
         assert_eq!(net.switch("s1").unwrap().node().kind(), "UserSwitch");
         assert_eq!(net.switch("s1").unwrap().dpid.len(), 12);
 
-        // --switch ovsbr -> OVSBridge; lxbr models LinuxBridge, start errors
+        // --switch ovsbr -> OVSBridge
         let mut net = Mininet::new(MininetOptions {
             build: false,
             switch_spec: "ovsbr".to_string(),
@@ -1041,6 +1041,7 @@ mod tests {
         net.add_switch("s1", &empty()).unwrap();
         assert_eq!(net.switch("s1").unwrap().node().kind(), "OVSBridge");
 
+        // --switch lxbr -> a real mn-node LinuxBridge (netlink-backed)
         let mut net = Mininet::new(MininetOptions {
             build: false,
             switch_spec: "lxbr".to_string(),
@@ -1049,8 +1050,15 @@ mod tests {
         .unwrap();
         net.add_switch("s1", &empty()).unwrap();
         assert_eq!(net.switch("s1").unwrap().node().kind(), "LinuxBridge");
-        let err = net.net_switch_mut("s1").unwrap().start(&[]).unwrap_err();
-        assert!(err.to_string().contains("not ported"), "got: {err}");
+        assert!(matches!(
+            net.net_switch("s1").unwrap(),
+            crate::NetSwitch::LxBr(_)
+        ));
+        // start() dispatches to LinuxBridge::start — never the old
+        // "not ported" error (non-root it fails with a netlink error instead)
+        if let Err(e) = net.net_switch_mut("s1").unwrap().start(&[]) {
+            assert!(!e.to_string().contains("not ported"), "got: {e}");
+        }
 
         // unknown class errors at add time
         let mut net = Mininet::new(MininetOptions {

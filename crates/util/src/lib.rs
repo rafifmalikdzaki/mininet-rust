@@ -10,7 +10,9 @@
 //! - numeric checks: [`check_int`], [`check_float`], [`make_numeric`]
 //! - natural sort keys: [`natural`], [`natural_seq`]
 //! - misc: [`irange`], [`split_args`], [`unit_scale`], [`fmt_bps`],
-//!   [`num_cores`], [`retry`]
+//!   [`num_cores`], [`retry`], [`is_root`] (the canonical root check,
+//!   Python's `ensureRoot()`, re-exported by `mn-net` and used by
+//!   `mn-node`)
 //!
 //! # Fidelity notes / deliberate deviations from CPython
 //!
@@ -36,7 +38,7 @@ pub use addr::{
     DEFAULT_IP_BASE_NUM, DEFAULT_PREFIX_LEN,
 };
 pub use args::{split_args, SplitArgs};
-pub use misc::{irange, num_cores, retry};
+pub use misc::{irange, is_root, num_cores, retry};
 pub use natural::{natural, natural_seq, NaturalPart};
 pub use numeric::{check_float, check_int, make_numeric, python_float, python_int, Numeric};
 // `percent_format`/`python_float_repr` stay crate-internal helpers of

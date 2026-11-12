@@ -62,9 +62,9 @@
 //!   `inNamespace=True`) is a **documented TODO**: `build()` returns an
 //!   explicit error for `in_namespace=true` until ported.
 //! - Switch *startup* dispatches through [`NetSwitch`] to the real `mn-node`
-//!   subclass (`OVSSwitch` runs its `ovs-vsctl` argv, ...), so
-//!   switch-bearing topos start on root hosts; `lxbr` (LinuxBridge) is not
-//!   ported in mn-node and errors clearly at `start()`. Controller startup
+//!   subclass (`OVSSwitch` runs its `ovs-vsctl` argv, `lxbr` runs the
+//!   netlink-backed `mn-node::nodelib::LinuxBridge`, ...), so
+//!   switch-bearing topos start on root hosts. Controller startup
 //!   uses `mn-node`'s `Controller::start` (the `controller` binary); the
 //!   NOX/Ryu controller subclasses remain TODO stubs there.
 //! - Progress logging (`info(...)`) goes to stderr via `eprintln!`;

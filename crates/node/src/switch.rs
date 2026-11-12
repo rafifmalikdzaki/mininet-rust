@@ -502,9 +502,11 @@ pub fn ivs_logfile(name: &str) -> String {
 
 /// Root gate for the user-space switch launches (`ofdatapath`/`ofprotocol`,
 /// `ivs` run in the root namespace and need `CAP_SYS_ADMIN`/TUN).
+///
+/// Uses the canonical [`mn_util::is_root`] (one implementation workspace-
+/// wide, re-exported by `mn-net` as `mn_net::is_root`).
 pub(crate) fn require_root(what: &str) -> Result<()> {
-    // SAFETY: geteuid(2) is a pure query syscall.
-    if unsafe { libc::geteuid() } == 0 {
+    if mn_util::is_root() {
         Ok(())
     } else {
         Err(Error::Other(format!(

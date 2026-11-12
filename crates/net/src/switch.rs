@@ -14,10 +14,12 @@
 //!
 //! With [`NetSwitch`], `Mininet::start` dispatches to the real subclass
 //! `start()` (`OVSSwitch` runs its `ovs-vsctl` argv, `UserSwitch` launches
-//! `ofdatapath`/`ofprotocol`, ...), so switch-bearing topos start on root
-//! hosts. `lxbr` (`LinuxBridge`, `mininet/nodelib.py`) is ported in
-//! `mn-node::nodelib`; wiring the seam to it is a follow-up — it is modeled as the base [`Switch`] with kind `LinuxBridge`
-//! so dry-run/dump still work, and `start()` fails with a clear error.
+//! `ofdatapath`/`ofprotocol`, `lxbr` runs the netlink-backed
+//! `mn-node::nodelib::LinuxBridge`, ...), so switch-bearing topos start on
+//! root hosts. `lxbr` (`LinuxBridge`, `mininet/nodelib.py`) is held as a
+//! real [`LinuxBridge`] in [`NetSwitch::LxBr`], so dry-run/dump show the
+//! `<LinuxBridge ...>` repr with kind set, and `start()`/`stop()`/
+//! `connected()` dispatch to its netlink-backed methods.
 //!
 //! Deviations from CPython (documented):
 //! - `batch` is not defaulted to `True` the way `buildFromTopo` does
@@ -31,7 +33,7 @@
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 
-use mn_node::{Controller, IVSSwitch, Node, OVSBridge, OVSSwitch, Switch, UserSwitch};
+use mn_node::{Controller, IVSSwitch, LinuxBridge, Node, OVSBridge, OVSSwitch, Switch, UserSwitch};
 
 use crate::error::{Error, Result};
 
@@ -47,8 +49,7 @@ pub enum SwitchKind {
     User,
     /// `ivs` → [`IVSSwitch`].
     Ivs,
-    /// `lxbr` → `LinuxBridge` — ported in `mn-node::nodelib`, seam wiring is a
-    /// base [`Switch`], `start()` errors clearly.
+    /// `lxbr` → [`LinuxBridge`] (netlink-backed, `mn-node::nodelib`).
     LxBr,
 }
 
@@ -105,9 +106,9 @@ pub enum NetSwitch {
     User(UserSwitch),
     /// `IVSSwitch` (`--switch ivs`).
     Ivs(IVSSwitch),
-    /// `LinuxBridge` (`--switch lxbr`) — ported in mn-node::nodelib; the base
-    /// [`Switch`] stands in for the model and `start()` errors.
-    LxBr(Switch),
+    /// `LinuxBridge` (`--switch lxbr`) — the real netlink-backed
+    /// [`LinuxBridge`] from `mn-node::nodelib`.
+    LxBr(LinuxBridge),
 }
 
 impl NetSwitch {
@@ -180,12 +181,26 @@ impl NetSwitch {
                 params,
             )?)),
             SwitchKind::LxBr => {
-                // LinuxBridge is ported in mn-node::nodelib; wiring the seam
-                // to it is a follow-up. Keep the base-Switch model so
-                // dry-run/dump work, and fail clearly at start().
-                let mut sw = Switch::new(name, dpid, opts, listen_port, in_namespace, params)?;
-                sw.node_mut().set_kind("LinuxBridge");
-                Ok(Self::LxBr(sw))
+                // Python: LinuxBridge(name, stp=False, prio=None, **kwargs)
+                // — spec kwargs stp=/prio= map to the constructor.
+                let prio = match kw("prio") {
+                    None => None,
+                    Some(v) => Some(v.parse::<u16>().map_err(|_| {
+                        Error::InvalidInput(format!(
+                            "lxbr prio must be a u16 bridge priority, got {v:?}"
+                        ))
+                    })?),
+                };
+                Ok(Self::LxBr(LinuxBridge::new_full(
+                    name,
+                    kw_bool(kw("stp"), false),
+                    prio,
+                    dpid,
+                    opts,
+                    listen_port,
+                    in_namespace,
+                    params,
+                )?))
             }
         }
     }
@@ -197,7 +212,7 @@ impl NetSwitch {
             Self::Bridge(s) => s.ovs().switch(),
             Self::User(s) => s.switch(),
             Self::Ivs(s) => s.switch(),
-            Self::LxBr(s) => s,
+            Self::LxBr(s) => s.switch(),
         }
     }
 
@@ -208,7 +223,7 @@ impl NetSwitch {
             Self::Bridge(s) => s.ovs_mut().switch_mut(),
             Self::User(s) => s.switch_mut(),
             Self::Ivs(s) => s.switch_mut(),
-            Self::LxBr(s) => s,
+            Self::LxBr(s) => s.switch_mut(),
         }
     }
 
@@ -241,11 +256,7 @@ impl NetSwitch {
             Self::Bridge(s) => Ok(s.start(controllers)?),
             Self::User(s) => Ok(s.start(controllers)?),
             Self::Ivs(s) => Ok(s.start(controllers)?),
-            Self::LxBr(s) => Err(Error::Other(format!(
-                "{}: switch class 'lxbr' (LinuxBridge, mininet/nodelib.py) is not \
-                 ported in mn-node yet; use --switch ovs (default)",
-                s.node().name
-            ))),
+            Self::LxBr(s) => Ok(s.start(controllers)?),
         }
     }
 
@@ -262,10 +273,7 @@ impl NetSwitch {
             Self::Bridge(s) => Ok(s.ovs_mut().stop(delete_intfs)?),
             Self::User(s) => Ok(s.stop(delete_intfs)?),
             Self::Ivs(s) => Ok(s.stop(delete_intfs)?),
-            Self::LxBr(s) => {
-                s.stop_with(delete_intfs);
-                Ok(())
-            }
+            Self::LxBr(s) => Ok(s.stop(delete_intfs)?),
         }
     }
 
@@ -387,11 +395,43 @@ mod tests {
         let br = NetSwitch::from_spec("ovsbr", "s1", None, "", None, false, params()).unwrap();
         assert_eq!(br.node().kind(), "OVSBridge");
 
+        // lxbr: the seam holds a REAL LinuxBridge (mn-node::nodelib), kind set
         let lx = NetSwitch::from_spec("lxbr", "s1", None, "", None, false, params()).unwrap();
+        assert!(matches!(lx, NetSwitch::LxBr(_)));
         assert_eq!(lx.node().kind(), "LinuxBridge");
+        // spec kwargs stp=/prio= map to the LinuxBridge constructor
+        let lx2 = NetSwitch::from_spec(
+            "lxbr,stp=true,prio=4096",
+            "s2",
+            None,
+            "",
+            None,
+            false,
+            params(),
+        )
+        .unwrap();
+        match &lx2 {
+            NetSwitch::LxBr(b) => {
+                assert!(b.stp);
+                assert_eq!(b.prio, 4096);
+            }
+            _ => panic!("expected LxBr"),
+        }
+        assert!(
+            NetSwitch::from_spec("lxbr,prio=bogus", "s2", None, "", None, false, params()).is_err()
+        );
+        // start() dispatches to LinuxBridge::start (netlink): never the old
+        // "not ported" error nor the base Switch's "no start" error. Non-root
+        // it fails with a netlink permission error instead.
         let mut lx = lx;
-        let err = lx.start(&[]).unwrap_err().to_string();
-        assert!(err.contains("not ported"), "got: {err}");
+        if let Err(e) = lx.start(&[]) {
+            let msg = e.to_string();
+            assert!(!msg.contains("not ported"), "lxbr seam is wired now: {msg}");
+            assert!(
+                !msg.contains("base Switch has no start"),
+                "start must dispatch to LinuxBridge, got: {msg}"
+            );
+        }
     }
 
     #[test]

@@ -15,6 +15,19 @@ pub struct PingResult {
     pub ploss: f64,
 }
 
+/// Python's `if not hosts: hosts = self.hosts` — **`None` or an empty list
+/// both mean "all hosts"** (an empty list is falsy in Python). Shared by
+/// [`Mininet::ping`] and [`Mininet::iperf`]; returns the selected host
+/// names and whether the all-hosts default kicked in (ping prints its
+/// `*** Ping:` header only in that case).
+pub(crate) fn hosts_or_all(hosts: Option<Vec<&str>>, all: &[String]) -> (Vec<String>, bool) {
+    match hosts {
+        None => (all.to_vec(), true),
+        Some(v) if v.is_empty() => (all.to_vec(), true),
+        Some(v) => (v.iter().map(|s| s.to_string()).collect(), false),
+    }
+}
+
 /// Port of `Mininet._parsePing`: parse `ping -c1` output into
 /// `(packets sent, packets received)`. A downed link
 /// (`connect: Network is unreachable`) counts as `(1, 0)`; unparseable
@@ -60,18 +73,13 @@ impl Mininet {
     /// mean "all hosts" too, so `Some(vec![])` behaves like `None`.
     pub fn ping(&mut self, hosts: Option<Vec<&str>>, timeout: Option<&str>) -> Result<PingResult> {
         let mut out = String::new();
-        let names: Vec<String> = match hosts {
-            None => {
-                out.push_str("*** Ping: testing ping reachability\n");
-                self.hosts.keys().map(str::to_string).collect()
-            }
-            Some(v) if v.is_empty() => {
-                // Python: `if not hosts:` — empty list is falsy, all hosts.
-                out.push_str("*** Ping: testing ping reachability\n");
-                self.hosts.keys().map(str::to_string).collect()
-            }
-            Some(v) => v.iter().map(|s| s.to_string()).collect(),
-        };
+        // Python: `if not hosts: hosts = self.hosts` — empty list is falsy,
+        // so None and Some([]) both mean all hosts (header printed then).
+        let all: Vec<String> = self.hosts.keys().map(str::to_string).collect();
+        let (names, defaulted_to_all) = hosts_or_all(hosts, &all);
+        if defaulted_to_all {
+            out.push_str("*** Ping: testing ping reachability\n");
+        }
         // Pre-compute per-destination (has intfs, IP string) — Python reads
         // dest.intfs / dest.IP() per pair.
         let mut dests: Vec<(String, bool, String)> = Vec::new();

@@ -613,8 +613,8 @@ mod tests {
         let name = format!("mnclhselftest{}", std::process::id() % 100000);
         let mut h = CPULimitedHost::new(&name, "cfs", BTreeMap::new());
         let r = h.set_cpu_frac(0.5, None);
-        // SAFETY: geteuid(2) is a pure query syscall.
-        if unsafe { libc::geteuid() } == 0 {
+        // canonical root check (mn_util::is_root, also re-exported by mn-net)
+        if mn_util::is_root() {
             let content = r.expect("root can create the cgroup and write cpu.max");
             let (q, p) = cfs_info(0.5, 100000, mn_util::num_cores() as u64);
             assert_eq!(content, cpu_max_content(&q, p));

@@ -304,16 +304,12 @@ dependencies = [
 name = "mn-node"
 version = "0.1.0"
 dependencies = [
- "futures",
  "libc",
  "mn-link",
  "mn-netlink",
  "mn-topo",
  "mn-util",
- "netlink-packet-route",
  "nix",
- "rtnetlink",
- "tokio",
 ]
 
 [[package]]

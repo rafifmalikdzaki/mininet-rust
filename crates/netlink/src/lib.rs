@@ -8,6 +8,13 @@
 //! `mininet/util.py::makeIntfPair`/`moveIntf`, `mininet/node.py`,
 //! `mininet/link.py::TCIntf`).
 //!
+//! It also owns the **Linux-bridge** link ops (the netlink form of
+//! `mininet/nodelib.py`'s `brctl` calls: [`bridge_add_msg`],
+//! [`enslave_msg`]/[`disenslave_msg`], [`link_up_msg`], and the
+//! [`BridgeNl`] facade / [`run_bridge_in_netns`] runner), plus the raw
+//! packet types via [`link_packet`] so dependents need no direct
+//! `netlink-packet-route` dependency.
+//!
 //! # Sync API over an internal runtime
 //!
 //! [`Netlink`] owns a tokio *current-thread* runtime and the rtnetlink
@@ -32,12 +39,17 @@
 //! privileged Linux host or CI runner.
 
 mod addr;
+mod bridge;
 mod error;
 mod link;
 mod ns;
 mod route;
 
 pub use addr::{validate_prefix_len, AddrInfo};
+pub use bridge::{
+    any_port_forwarding, bridge_add_msg, disenslave_msg, enslave_msg, enslaved_port_states,
+    link_packet, link_up_msg, msg_bridge_data, msg_ifname, run_bridge_in_netns, BridgeNl,
+};
 pub use error::{Error, Result};
 pub use link::{parse_mac, validate_ifname, LinkInfo, IFNAMSIZ_MAX};
 pub use ns::{

@@ -121,17 +121,17 @@ impl Mininet {
             )));
         }
         let all: Vec<String> = self.hosts.keys().map(str::to_string).collect();
-        let names: Vec<String> = match hosts {
-            // Python: `hosts = hosts or [self.hosts[0], self.hosts[-1]]`
-            None => vec![
+        // Python: `hosts = hosts or [self.hosts[0], self.hosts[-1]]` —
+        // `hosts_or_all` folds None and Some([]) into "all hosts"
+        // (`if not hosts:`), then the default is first+last host.
+        let (selected, defaulted_to_all) = crate::ping::hosts_or_all(hosts, &all);
+        let names: Vec<String> = if defaulted_to_all {
+            vec![
                 all.first().cloned().unwrap_or_default(),
                 all.last().cloned().unwrap_or_default(),
-            ],
-            Some(v) if v.is_empty() => vec![
-                all.first().cloned().unwrap_or_default(),
-                all.last().cloned().unwrap_or_default(),
-            ],
-            Some(v) => v.iter().map(|s| s.to_string()).collect(),
+            ]
+        } else {
+            selected
         };
         if names.len() != 2 {
             return Err(Error::InvalidInput(format!(

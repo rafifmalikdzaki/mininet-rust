@@ -226,6 +226,48 @@ fn dry_run_topo_sections_match_python_fixtures() {
     }
 }
 
+/// `--switch lxbr`: the seam holds a real `mn-node::nodelib::LinuxBridge`,
+/// so the dry-run dump shows the `<LinuxBridge ...>` repr with the kind set
+/// correctly — exactly like Python's `repr(LinuxBridge(...))`.
+#[test]
+fn dry_run_lxbr_switch_repr_golden() {
+    let mut net = Mininet::dry_run(
+        "single,2",
+        MininetOptions {
+            controller: Some(ControllerKind::None), // --controller none
+            switch_spec: "lxbr".to_string(),        // --switch lxbr
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let expected = "\
+=== topo ===
+spec: single,2
+class: SingleSwitchTopo
+nodes: h1 h2 s1
+hosts: h1 h2
+switches: s1
+links: h1-eth0<->s1-eth1 h2-eth0<->s1-eth2
+=== dump ===
+<Host h1: h1-eth0:10.0.0.1 pid=None> \n\
+<Host h2: h2-eth0:10.0.0.2 pid=None> \n\
+<LinuxBridge s1: lo:127.0.0.1,s1-eth1:None,s1-eth2:None pid=None> \n\
+=== links ===
+h1-eth0<->s1-eth1 (MISSING MISSING)\n\
+h2-eth0<->s1-eth2 (MISSING MISSING)\n";
+    assert_eq!(net.plan(), expected);
+    // the stored value is the LinuxBridge itself (seam wired), kind set
+    assert!(matches!(
+        net.net_switch("s1").unwrap(),
+        mn_net::NetSwitch::LxBr(_)
+    ));
+    assert_eq!(net.switch("s1").unwrap().node().kind(), "LinuxBridge");
+    // dry-run stop on the never-started LinuxBridge is a model-only no-op
+    // (no netlink ops, no root needed)
+    net.stop().unwrap();
+    assert!(!net.built);
+}
+
 /// A default controller shows up in the dump in Python's Controller repr
 /// format (`<Controller c0: 127.0.0.1:6653 pid=None> `).
 #[test]
