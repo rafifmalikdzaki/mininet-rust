@@ -85,12 +85,6 @@ impl Intf {
     }
 }
 
-/// Set an IP/prefix on an interface (convenience free function, Python
-/// `Intf.setIP`).
-pub fn set_ip(intf: &mut Intf, ip: IpAddr, prefix_len: u8) {
-    intf.set_ip(ip, prefix_len);
-}
-
 impl fmt::Display for Intf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.name)

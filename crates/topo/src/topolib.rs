@@ -17,6 +17,98 @@ use mn_util::{irange, split_args, Numeric};
 
 use crate::topo::{Topo, TopoOptions};
 use crate::value::Attrs;
+use crate::Result;
+
+/// Shared boilerplate for the built-in topology wrappers: the
+/// `class_name`/`topo`/`into_topo` accessors, `Deref<Target = Topo>` and
+/// (when `default = ...` is given) the `Default` impl.
+///
+/// `field = <name>` is for wrappers holding a direct `topo: Topo` field;
+/// `wraps = <name>` is for wrappers around another wrapper (delegating to
+/// its `topo`/`into_topo`, e.g. [`MinimalTopo`]).
+macro_rules! topo_wrapper {
+    ($name:ident, $class:literal $(, default = $default:expr)? , field = $field:ident $(,)?) => {
+        impl $name {
+            /// Class name as `type(topo).__name__` would report.
+            pub fn class_name(&self) -> &'static str {
+                $class
+            }
+
+            /// The backing [`Topo`].
+            pub fn topo(&self) -> &Topo {
+                &self.$field
+            }
+
+            /// Consume the wrapper, returning the backing [`Topo`].
+            pub fn into_topo(self) -> Topo {
+                self.$field
+            }
+        }
+
+        $(
+            impl Default for $name {
+                fn default() -> Self {
+                    $default
+                }
+            }
+        )?
+
+        impl Deref for $name {
+            type Target = Topo;
+            fn deref(&self) -> &Topo {
+                self.topo()
+            }
+        }
+    };
+    ($name:ident, $class:literal $(, default = $default:expr)? , wraps = $inner:ident $(,)?) => {
+        impl $name {
+            /// Class name as `type(topo).__name__` would report.
+            pub fn class_name(&self) -> &'static str {
+                $class
+            }
+
+            /// The backing [`Topo`].
+            pub fn topo(&self) -> &Topo {
+                self.$inner.topo()
+            }
+
+            /// Consume the wrapper, returning the backing [`Topo`].
+            pub fn into_topo(self) -> Topo {
+                self.$inner.into_topo()
+            }
+        }
+
+        $(
+            impl Default for $name {
+                fn default() -> Self {
+                    $default
+                }
+            }
+        )?
+
+        impl Deref for $name {
+            type Target = Topo;
+            fn deref(&self) -> &Topo {
+                self.topo()
+            }
+        }
+    };
+}
+
+/// Delegate a no-argument method to the wrapped topology of each
+/// [`BuiltTopo`] variant.
+macro_rules! built_topo {
+    ($sel:expr, $method:ident) => {
+        match $sel {
+            BuiltTopo::Minimal(t) => t.$method(),
+            BuiltTopo::SingleSwitch(t) => t.$method(),
+            BuiltTopo::SingleSwitchReversed(t) => t.$method(),
+            BuiltTopo::Linear(t) => t.$method(),
+            BuiltTopo::Tree(t) => t.$method(),
+            BuiltTopo::Torus(t) => t.$method(),
+        }
+    };
+}
 
 /// Port of `SingleSwitchTopo`: single switch `s1` connected to `k` hosts
 /// `h1..hk`.
@@ -52,35 +144,14 @@ impl SingleSwitchTopo {
                 .add_link(&host, &switch, None, None, None, Attrs::new());
         }
     }
-
-    /// Class name as `type(topo).__name__` would report.
-    pub fn class_name(&self) -> &'static str {
-        "SingleSwitchTopo"
-    }
-
-    /// The backing [`Topo`].
-    pub fn topo(&self) -> &Topo {
-        &self.topo
-    }
-
-    /// Consume the wrapper, returning the backing [`Topo`].
-    pub fn into_topo(self) -> Topo {
-        self.topo
-    }
 }
 
-impl Default for SingleSwitchTopo {
-    fn default() -> Self {
-        Self::new(2)
-    }
-}
-
-impl Deref for SingleSwitchTopo {
-    type Target = Topo;
-    fn deref(&self) -> &Topo {
-        &self.topo
-    }
-}
+topo_wrapper!(
+    SingleSwitchTopo,
+    "SingleSwitchTopo",
+    default = Self::new(2),
+    field = topo
+);
 
 /// Port of `SingleSwitchReversedTopo`: single switch connected to `k` hosts
 /// with reversed ports — the lowest-numbered host gets the highest-numbered
@@ -123,35 +194,14 @@ impl SingleSwitchReversedTopo {
             );
         }
     }
-
-    /// Class name as `type(topo).__name__` would report.
-    pub fn class_name(&self) -> &'static str {
-        "SingleSwitchReversedTopo"
-    }
-
-    /// The backing [`Topo`].
-    pub fn topo(&self) -> &Topo {
-        &self.topo
-    }
-
-    /// Consume the wrapper, returning the backing [`Topo`].
-    pub fn into_topo(self) -> Topo {
-        self.topo
-    }
 }
 
-impl Default for SingleSwitchReversedTopo {
-    fn default() -> Self {
-        Self::new(2)
-    }
-}
-
-impl Deref for SingleSwitchReversedTopo {
-    type Target = Topo;
-    fn deref(&self) -> &Topo {
-        &self.topo
-    }
-}
+topo_wrapper!(
+    SingleSwitchReversedTopo,
+    "SingleSwitchReversedTopo",
+    default = Self::new(2),
+    field = topo
+);
 
 /// Port of `MinimalTopo`: two hosts and one switch (`SingleSwitchTopo(k=2)`).
 #[derive(Debug, Clone)]
@@ -172,35 +222,14 @@ impl MinimalTopo {
             inner: SingleSwitchTopo::with_options(2, options),
         }
     }
-
-    /// Class name as `type(topo).__name__` would report.
-    pub fn class_name(&self) -> &'static str {
-        "MinimalTopo"
-    }
-
-    /// The backing [`Topo`].
-    pub fn topo(&self) -> &Topo {
-        &self.inner.topo
-    }
-
-    /// Consume the wrapper, returning the backing [`Topo`].
-    pub fn into_topo(self) -> Topo {
-        self.inner.into_topo()
-    }
 }
 
-impl Default for MinimalTopo {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Deref for MinimalTopo {
-    type Target = Topo;
-    fn deref(&self) -> &Topo {
-        &self.inner.topo
-    }
-}
+topo_wrapper!(
+    MinimalTopo,
+    "MinimalTopo",
+    default = Self::new(),
+    wraps = inner
+);
 
 /// Port of `LinearTopo`: linear topology of `k` switches with `n` hosts per
 /// switch.
@@ -257,35 +286,14 @@ impl LinearTopo {
             last_switch = Some(switch);
         }
     }
-
-    /// Class name as `type(topo).__name__` would report.
-    pub fn class_name(&self) -> &'static str {
-        "LinearTopo"
-    }
-
-    /// The backing [`Topo`].
-    pub fn topo(&self) -> &Topo {
-        &self.topo
-    }
-
-    /// Consume the wrapper, returning the backing [`Topo`].
-    pub fn into_topo(self) -> Topo {
-        self.topo
-    }
 }
 
-impl Default for LinearTopo {
-    fn default() -> Self {
-        Self::new(2, 1)
-    }
-}
-
-impl Deref for LinearTopo {
-    type Target = Topo;
-    fn deref(&self) -> &Topo {
-        &self.topo
-    }
-}
+topo_wrapper!(
+    LinearTopo,
+    "LinearTopo",
+    default = Self::new(2, 1),
+    field = topo
+);
 
 /// Port of `TreeTopo` from `mininet/topolib.py`: tree network with a given
 /// depth and fanout. Numbering: `h1..N`, `s1..M`.
@@ -348,35 +356,14 @@ impl TreeTopo {
             node
         }
     }
-
-    /// Class name as `type(topo).__name__` would report.
-    pub fn class_name(&self) -> &'static str {
-        "TreeTopo"
-    }
-
-    /// The backing [`Topo`].
-    pub fn topo(&self) -> &Topo {
-        &self.topo
-    }
-
-    /// Consume the wrapper, returning the backing [`Topo`].
-    pub fn into_topo(self) -> Topo {
-        self.topo
-    }
 }
 
-impl Default for TreeTopo {
-    fn default() -> Self {
-        Self::new(1, 2)
-    }
-}
-
-impl Deref for TreeTopo {
-    type Target = Topo;
-    fn deref(&self) -> &Topo {
-        &self.topo
-    }
-}
+topo_wrapper!(
+    TreeTopo,
+    "TreeTopo",
+    default = Self::new(1, 2),
+    field = topo
+);
 
 /// Port of `TreeNet(depth=1, fanout=2, **kwargs)` from `mininet/topolib.py`.
 ///
@@ -401,12 +388,12 @@ pub struct TorusTopo {
 impl TorusTopo {
     /// `TorusTopo(x, y, n)`; errors when `x < 3 || y < 3` like the Python
     /// original.
-    pub fn new(x: i64, y: i64, n: i64) -> Result<Self, TopoError> {
+    pub fn new(x: i64, y: i64, n: i64) -> Result<Self> {
         Self::with_options(x, y, n, TopoOptions::default())
     }
 
     /// `TorusTopo(x, y, n, hopts=..., sopts=..., lopts=...)`.
-    pub fn with_options(x: i64, y: i64, n: i64, options: TopoOptions) -> Result<Self, TopoError> {
+    pub fn with_options(x: i64, y: i64, n: i64, options: TopoOptions) -> Result<Self> {
         let mut t = Self {
             topo: Topo::with_options(options),
         };
@@ -415,10 +402,18 @@ impl TorusTopo {
     }
 
     /// Port of `build(x, y, n=1)`.
-    pub fn build(&mut self, x: i64, y: i64, n: i64) -> Result<(), TopoError> {
+    pub fn build(&mut self, x: i64, y: i64, n: i64) -> Result<()> {
         if x < 3 || y < 3 {
             return Err(TopoError::TorusTooSmall);
         }
+        let switches = self.build_hosts(x, y, n);
+        self.connect_switches(x, y, &switches);
+        Ok(())
+    }
+
+    /// Create all switches and their hosts and wire each host to its
+    /// switch. Returns the `(i, j) -> switch name` map.
+    fn build_hosts(&mut self, x: i64, y: i64, n: i64) -> HashMap<(i64, i64), String> {
         // n == 1 -> 'h<loc>'; otherwise 'h<loc>x<k>'
         let mut hosts: HashMap<(i64, i64, i64), String> = HashMap::new();
         let mut switches: HashMap<(i64, i64), String> = HashMap::new();
@@ -446,7 +441,12 @@ impl TorusTopo {
                 }
             }
         }
-        // Connect switches
+        switches
+    }
+
+    /// Wire the torus: each switch links to its `+x` and `+y` neighbours
+    /// (wrapping around at the edges).
+    fn connect_switches(&mut self, x: i64, y: i64, switches: &HashMap<(i64, i64), String>) {
         for i in 0..x {
             for j in 0..y {
                 let sw1 = &switches[&(i, j)];
@@ -456,31 +456,10 @@ impl TorusTopo {
                 self.topo.add_link(sw1, sw3, None, None, None, Attrs::new());
             }
         }
-        Ok(())
-    }
-
-    /// Class name as `type(topo).__name__` would report.
-    pub fn class_name(&self) -> &'static str {
-        "TorusTopo"
-    }
-
-    /// The backing [`Topo`].
-    pub fn topo(&self) -> &Topo {
-        &self.topo
-    }
-
-    /// Consume the wrapper, returning the backing [`Topo`].
-    pub fn into_topo(self) -> Topo {
-        self.topo
     }
 }
 
-impl Deref for TorusTopo {
-    type Target = Topo;
-    fn deref(&self) -> &Topo {
-        &self.topo
-    }
-}
+topo_wrapper!(TorusTopo, "TorusTopo", field = topo);
 
 /// A built-in topology produced by [`build_topo`] (the `TOPOS` dict of
 /// `bin/mn`).
@@ -503,38 +482,17 @@ pub enum BuiltTopo {
 impl BuiltTopo {
     /// Class name as `type(topo).__name__` would report.
     pub fn class_name(&self) -> &'static str {
-        match self {
-            BuiltTopo::Minimal(t) => t.class_name(),
-            BuiltTopo::SingleSwitch(t) => t.class_name(),
-            BuiltTopo::SingleSwitchReversed(t) => t.class_name(),
-            BuiltTopo::Linear(t) => t.class_name(),
-            BuiltTopo::Tree(t) => t.class_name(),
-            BuiltTopo::Torus(t) => t.class_name(),
-        }
+        built_topo!(self, class_name)
     }
 
     /// The backing [`Topo`].
     pub fn topo(&self) -> &Topo {
-        match self {
-            BuiltTopo::Minimal(t) => t.topo(),
-            BuiltTopo::SingleSwitch(t) => t.topo(),
-            BuiltTopo::SingleSwitchReversed(t) => t.topo(),
-            BuiltTopo::Linear(t) => t.topo(),
-            BuiltTopo::Tree(t) => t.topo(),
-            BuiltTopo::Torus(t) => t.topo(),
-        }
+        built_topo!(self, topo)
     }
 
     /// Consume the wrapper, returning the backing [`Topo`].
     pub fn into_topo(self) -> Topo {
-        match self {
-            BuiltTopo::Minimal(t) => t.into_topo(),
-            BuiltTopo::SingleSwitch(t) => t.into_topo(),
-            BuiltTopo::SingleSwitchReversed(t) => t.into_topo(),
-            BuiltTopo::Linear(t) => t.into_topo(),
-            BuiltTopo::Tree(t) => t.into_topo(),
-            BuiltTopo::Torus(t) => t.into_topo(),
-        }
+        built_topo!(self, into_topo)
     }
 }
 
@@ -594,7 +552,7 @@ impl std::error::Error for TopoError {}
 /// swallows them (`single`, `linear`); `hopts`/`sopts`/`lopts` scalars from a
 /// spec string are rejected with a `TypeError`-mapped error, matching the
 /// Python failure when the popped scalar is later unpacked as node opts.
-pub fn build_topo(spec: &str) -> Result<BuiltTopo, TopoError> {
+pub fn build_topo(spec: &str) -> Result<BuiltTopo> {
     let parsed = split_args(spec);
     let name = parsed.func.as_str();
     let accepts_kwargs = matches!(name, "single" | "linear");
@@ -613,7 +571,7 @@ pub fn build_topo(spec: &str) -> Result<BuiltTopo, TopoError> {
             _ => {}
         }
     }
-    let opt = |i: usize, default: i64| -> Result<i64, TopoError> {
+    let opt = |i: usize, default: i64| -> Result<i64> {
         match parsed.args.get(i) {
             None => Ok(default),
             Some(Numeric::Int(v)) => Ok(*v),
@@ -623,7 +581,7 @@ pub fn build_topo(spec: &str) -> Result<BuiltTopo, TopoError> {
             ))),
         }
     };
-    let req = |i: usize, what: &str| -> Result<i64, TopoError> {
+    let req = |i: usize, what: &str| -> Result<i64> {
         match parsed.args.get(i) {
             Some(Numeric::Int(v)) => Ok(*v),
             Some(other) => Err(TopoError::BadArgs(format!(
@@ -634,7 +592,7 @@ pub fn build_topo(spec: &str) -> Result<BuiltTopo, TopoError> {
             ))),
         }
     };
-    let check_arity = |max: usize| -> Result<(), TopoError> {
+    let check_arity = |max: usize| -> Result<()> {
         if parsed.args.len() > max {
             return Err(TopoError::BadArgs(format!(
                 "build() takes at most {} positional argument(s), got {}",

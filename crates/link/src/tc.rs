@@ -32,6 +32,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use futures::StreamExt;
+use mn_netlink::Netlink;
 use netlink_packet_core::{
     DefaultNla, NetlinkMessage, NetlinkPayload, NLA_F_NESTED, NLM_F_ACK, NLM_F_CREATE, NLM_F_EXCL,
     NLM_F_REQUEST,
@@ -43,29 +44,29 @@ use rtnetlink::Handle;
 use crate::{Error, Result};
 
 /// `TCA_OPTIONS` qdisc attribute kind (`include/uapi/linux/rtnetlink.h`).
-pub const TCA_OPTIONS: u16 = 2;
+pub(crate) const TCA_OPTIONS: u16 = 2;
 /// `TCA_NETEM_RATE64`: u64 rate in bytes/sec.
-pub const TCA_NETEM_RATE64: u16 = 8;
+pub(crate) const TCA_NETEM_RATE64: u16 = 8;
 /// `TCA_NETEM_LATENCY64`: s64 delay in nanoseconds.
-pub const TCA_NETEM_LATENCY64: u16 = 10;
+pub(crate) const TCA_NETEM_LATENCY64: u16 = 10;
 /// `TCA_NETEM_JITTER64`: s64 jitter in nanoseconds.
-pub const TCA_NETEM_JITTER64: u16 = 11;
+pub(crate) const TCA_NETEM_JITTER64: u16 = 11;
 
 /// `PSCHED_SHIFT` from `include/net/pkt_sched.h`: the legacy
 /// `tc_netem_qopt` time fields are in ticks of 2^6 = 64 ns.
-pub const PSCHED_SHIFT: u32 = 6;
+pub(crate) const PSCHED_SHIFT: u32 = 6;
 
 /// netem queue limit used when the user does not set `max_queue_size`
 /// (iproute2's `tc_netem_qopt` default: `.limit = 1000`).
-pub const NETEM_DEFAULT_LIMIT: u32 = 1000;
+pub(crate) const NETEM_DEFAULT_LIMIT: u32 = 1000;
 
 /// Qdisc handle `10:` used by Python's `TCIntf.delayCmds`
 /// (`handle 10: netem ...`), i.e. major 10 minor 0.
-pub const NETEM_HANDLE: u32 = 0x00A0_0000;
+pub(crate) const NETEM_HANDLE: u32 = 0x00A0_0000;
 
 /// `TC_H_ROOT` (0xFFFFFFFF) as u32 — parent value identifying the root
 /// qdisc in [`QdiscInfo::parent`].
-pub const TC_H_ROOT: u32 = 0xFFFF_FFFF;
+pub(crate) const TC_H_ROOT: u32 = 0xFFFF_FFFF;
 
 /// Parameters of the netem qdisc we install (the `netemargs` of
 /// `TCIntf.delayCmds`).
@@ -160,8 +161,9 @@ pub struct QdiscInfo {
 /// add/change/del need root + `CAP_NET_ADMIN`.
 ///
 /// (mn-link keeps its own connection because `mn-netlink` deliberately does
-/// not expose its handle; the veth/address ops still go through
-/// `mn-netlink::Netlink` — see [`crate::LinkOps`].)
+/// not expose its handle or runtime; interface-index resolution is shared
+/// by taking a `&Netlink` — see `require_index`. The veth/address ops
+/// still go through `mn_netlink::Netlink` — see [`crate::LinkOps`].)
 #[derive(Debug)]
 pub struct Tc {
     rt: tokio::runtime::Runtime,
@@ -186,28 +188,6 @@ impl Tc {
 
     fn run<F: Future>(&self, fut: F) -> F::Output {
         self.rt.block_on(fut)
-    }
-
-    fn link_index(&self, ifname: &str) -> Result<Option<u32>> {
-        self.run(async {
-            let mut stream = self.handle.link().get().execute();
-            while let Some(msg) = stream.next().await {
-                let msg = msg.map_err(|e| Error::Tc(e.to_string()))?;
-                let name = msg.attributes.iter().find_map(|a| match a {
-                    netlink_packet_route::link::LinkAttribute::IfName(n) => Some(n.clone()),
-                    _ => None,
-                });
-                if name.as_deref() == Some(ifname) {
-                    return Ok(Some(msg.header.index));
-                }
-            }
-            Ok(None)
-        })
-    }
-
-    fn require_index(&self, ifname: &str) -> Result<u32> {
-        self.link_index(ifname)?
-            .ok_or_else(|| Error::InvalidInput(format!("no such interface: {ifname:?}")))
     }
 
     /// Send one qdisc message (`RTM_NEWQDISC`/`RTM_DELQDISC`) and turn an
@@ -236,8 +216,9 @@ impl Tc {
 
     /// Install a netem root qdisc on `ifname` (equivalent of
     /// `tc qdisc add dev <ifname> root handle 10: netem <args>`).
-    pub fn add_netem(&self, ifname: &str, cfg: &NetemConfig) -> Result<()> {
-        let index = self.require_index(ifname)?;
+    /// `nl` resolves the interface name to its index.
+    pub fn add_netem(&self, nl: &Netlink, ifname: &str, cfg: &NetemConfig) -> Result<()> {
+        let index = require_index(nl, ifname)?;
         self.add_netem_index(index, cfg)
     }
 
@@ -258,8 +239,9 @@ impl Tc {
     }
 
     /// Delete the root qdisc of `ifname` (`tc qdisc del dev <ifname> root`).
-    pub fn del_root_qdisc(&self, ifname: &str) -> Result<()> {
-        let index = self.require_index(ifname)?;
+    /// `nl` resolves the interface name to its index.
+    pub fn del_root_qdisc(&self, nl: &Netlink, ifname: &str) -> Result<()> {
+        let index = require_index(nl, ifname)?;
         let mut msg = TcMessage::with_index(index as i32);
         msg.header.parent = TcHandle::ROOT;
         msg.header.handle = TcHandle::UNSPEC;
@@ -267,9 +249,9 @@ impl Tc {
     }
 
     /// List the qdiscs of `ifname` (`tc qdisc show dev <ifname>`).
-    /// Works unprivileged.
-    pub fn qdisc_list(&self, ifname: &str) -> Result<Vec<QdiscInfo>> {
-        let index = self.require_index(ifname)?;
+    /// Works unprivileged. `nl` resolves the interface name to its index.
+    pub fn qdisc_list(&self, nl: &Netlink, ifname: &str) -> Result<Vec<QdiscInfo>> {
+        let index = require_index(nl, ifname)?;
         self.run(async {
             let mut stream = self.handle.qdisc().get().index(index as i32).execute();
             let mut out = Vec::new();
@@ -292,6 +274,14 @@ impl Tc {
             Ok(out)
         })
     }
+}
+
+/// Resolve `ifname` to its interface index via the shared `mn-netlink`
+/// facade (one `RTM_GETLINK` dump); error where the interface does not
+/// exist.
+fn require_index(nl: &Netlink, ifname: &str) -> Result<u32> {
+    nl.link_index(ifname)?
+        .ok_or_else(|| Error::InvalidInput(format!("no such interface: {ifname:?}")))
 }
 
 #[cfg(test)]
@@ -395,9 +385,10 @@ mod tests {
 
     #[test]
     fn qdisc_list_runs_without_root() {
+        let nl = Netlink::new().unwrap();
         let tc = Tc::new().unwrap();
         let qdiscs = tc
-            .qdisc_list("lo")
+            .qdisc_list(&nl, "lo")
             .expect("RTM_GETQDISC dump works unprivileged");
         assert!(
             !qdiscs.is_empty() && qdiscs.iter().any(|q| q.kind == "noqueue"),
@@ -407,9 +398,10 @@ mod tests {
 
     #[test]
     fn qdisc_list_unknown_interface_is_invalid_input() {
+        let nl = Netlink::new().unwrap();
         let tc = Tc::new().unwrap();
         assert!(matches!(
-            tc.qdisc_list("no-such-intf0"),
+            tc.qdisc_list(&nl, "no-such-intf0"),
             Err(Error::InvalidInput(_))
         ));
     }
@@ -437,6 +429,7 @@ mod tests {
         nl.link_set_up(&a, true).unwrap();
 
         tc.add_netem(
+            &nl,
             &a,
             &NetemConfig {
                 delay: Some(Duration::from_millis(5)),
@@ -447,7 +440,7 @@ mod tests {
             },
         )
         .expect("kernel must accept our netem TCA_OPTIONS");
-        let qdiscs = tc.qdisc_list(&a).unwrap();
+        let qdiscs = tc.qdisc_list(&nl, &a).unwrap();
         assert!(
             qdiscs
                 .iter()
@@ -455,8 +448,8 @@ mod tests {
             "netem qdisc missing in {qdiscs:?}"
         );
 
-        tc.del_root_qdisc(&a).unwrap();
-        let qdiscs = tc.qdisc_list(&a).unwrap();
+        tc.del_root_qdisc(&nl, &a).unwrap();
+        let qdiscs = tc.qdisc_list(&nl, &a).unwrap();
         assert!(
             !qdiscs.iter().any(|q| q.kind == "netem"),
             "netem qdisc still present in {qdiscs:?}"

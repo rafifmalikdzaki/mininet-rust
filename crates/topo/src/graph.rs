@@ -308,76 +308,32 @@ impl MultiGraph {
         self.node.is_empty()
     }
 
-    /// Port of `convertTo(cls, data=False, keys=False)`: build a new graph of
-    /// a networkx-MultiGraph-like type `T` from this one.
+    /// Port of `convertTo(cls, data=False, keys=False)`: build a new
+    /// [`MultiGraph`] from this one.
     ///
     /// `data`/`keys` select the edge tuple shape exactly like the Python
-    /// original: edges are passed as [`ConvertedEdge`] with `attrs` present
-    /// iff `data || keys`, and `key` present iff `keys`.
-    pub fn convert_to<T: GraphSink + Default>(&self, data: bool, keys: bool) -> T {
-        let mut g = T::default();
-        g.add_nodes_from(
-            self.nodes_data()
-                .into_iter()
-                .map(|(n, a)| (n.to_string(), a.clone()))
-                .collect(),
-        );
+    /// original: the key is kept iff `keys`, and the attrs are kept iff
+    /// `data || keys` (otherwise the new edge gets empty attrs and, when
+    /// `keys` is false, an auto-assigned key).
+    pub fn convert_to(&self, data: bool, keys: bool) -> MultiGraph {
+        let mut g = MultiGraph::new();
+        for (n, a) in self.nodes_data() {
+            g.add_node(n, a.clone());
+        }
         let with_data = data || keys;
-        let edges = self
-            .edges_data_keys()
-            .into_iter()
-            .map(|(src, dst, key, attrs)| ConvertedEdge {
-                src: src.to_string(),
-                dst: dst.to_string(),
-                key: if keys { Some(key.clone()) } else { None },
-                attrs: if with_data { Some(attrs.clone()) } else { None },
-            })
-            .collect();
-        g.add_edges_from(edges);
+        for (src, dst, key, attrs) in self.edges_data_keys() {
+            g.add_edge(
+                src,
+                dst,
+                if keys { Some(key.clone()) } else { None },
+                if with_data {
+                    attrs.clone()
+                } else {
+                    Attrs::new()
+                },
+            );
+        }
         g
-    }
-}
-
-/// One edge passed to [`GraphSink::add_edges_from`] by
-/// [`MultiGraph::convert_to`], mirroring the 2/3/4-tuples of
-/// `edges(data=..., keys=...)`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConvertedEdge {
-    /// Source node.
-    pub src: String,
-    /// Destination node.
-    pub dst: String,
-    /// Edge key, present iff `keys=true` was requested.
-    pub key: Option<EdgeKey>,
-    /// Edge attrs, present iff `data || keys` was requested.
-    pub attrs: Option<Attrs>,
-}
-
-/// Duck-typed sink for [`MultiGraph::convert_to`], mirroring the
-/// `add_nodes_from`/`add_edges_from` interface of the networkx-like classes
-/// the Python `convertTo(cls, ...)` accepts.
-///
-/// Deviation: the Python version passes bare node names when `data=false`;
-/// here `add_nodes_from` always receives `(node, attrs)` pairs, with empty
-/// attrs when `data=false`.
-pub trait GraphSink {
-    /// `g.add_nodes_from(nodes(data=...))`.
-    fn add_nodes_from(&mut self, nodes: Vec<(String, Attrs)>);
-    /// `g.add_edges_from(edges(data=..., keys=...))`.
-    fn add_edges_from(&mut self, edges: Vec<ConvertedEdge>);
-}
-
-impl GraphSink for MultiGraph {
-    fn add_nodes_from(&mut self, nodes: Vec<(String, Attrs)>) {
-        for (n, a) in nodes {
-            self.add_node(n, a);
-        }
-    }
-
-    fn add_edges_from(&mut self, edges: Vec<ConvertedEdge>) {
-        for e in edges {
-            self.add_edge(&e.src, &e.dst, e.key, e.attrs.unwrap_or_default());
-        }
     }
 }
 

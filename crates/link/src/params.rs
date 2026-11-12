@@ -190,29 +190,29 @@ fn parse_loss(v: &Numeric) -> Result<f64> {
     Ok(loss)
 }
 
-fn parse_max_queue_size(v: &Numeric) -> Result<u32> {
+/// Parse a non-negative integer [`Numeric`] as `u32` (whole floats are
+/// accepted, like Python's `int()` truncation of e.g. `2.0`; anything that
+/// does not fit in `u32` is an error). Used by `max_queue_size` and
+/// `speedup`.
+fn parse_u32(v: &Numeric, key: &str) -> Result<u32> {
     match v {
-        Numeric::Int(i) if *i >= 0 => u32::try_from(*i)
-            .map_err(|_| Error::Parse(format!("max_queue_size={i} does not fit in u32"))),
+        Numeric::Int(i) if *i >= 0 => {
+            u32::try_from(*i).map_err(|_| Error::Parse(format!("{key}={i} does not fit in u32")))
+        }
         Numeric::Float(f) if *f >= 0.0 && f.fract() == 0.0 => u32::try_from(*f as i64)
-            .map_err(|_| Error::Parse(format!("max_queue_size={f} does not fit in u32"))),
+            .map_err(|_| Error::Parse(format!("{key}={f} does not fit in u32"))),
         _ => Err(Error::Parse(format!(
-            "max_queue_size: expected a non-negative integer, got {v:?}"
+            "{key}: expected a non-negative integer, got {v:?}"
         ))),
     }
 }
 
+fn parse_max_queue_size(v: &Numeric) -> Result<u32> {
+    parse_u32(v, "max_queue_size")
+}
+
 fn parse_speedup(v: &Numeric) -> Result<u32> {
-    match v {
-        Numeric::Int(i) if *i >= 0 => {
-            u32::try_from(*i).map_err(|_| Error::Parse(format!("speedup={i} does not fit in u32")))
-        }
-        Numeric::Float(f) if *f >= 0.0 && f.fract() == 0.0 => u32::try_from(*f as i64)
-            .map_err(|_| Error::Parse(format!("speedup={f} does not fit in u32"))),
-        _ => Err(Error::Parse(format!(
-            "speedup: expected a non-negative integer, got {v:?}"
-        ))),
-    }
+    parse_u32(v, "speedup")
 }
 
 fn parse_bool(v: &Numeric, key: &str) -> Result<bool> {
@@ -224,6 +224,9 @@ fn parse_bool(v: &Numeric, key: &str) -> Result<bool> {
         },
         Numeric::Float(f) if *f == 0.0 => Ok(false),
         Numeric::Float(f) if *f == 1.0 => Ok(true),
+        Numeric::Float(_) => Err(Error::Parse(format!(
+            "{key}: expected a boolean, got {v:?}"
+        ))),
         Numeric::Text(t) => match t.to_ascii_lowercase().as_str() {
             "true" | "yes" | "on" | "1" => Ok(true),
             "false" | "no" | "off" | "0" => Ok(false),
@@ -231,9 +234,6 @@ fn parse_bool(v: &Numeric, key: &str) -> Result<bool> {
                 "{key}: expected a boolean (true/false/yes/no/on/off/1/0), got {t:?}"
             ))),
         },
-        _ => Err(Error::Parse(format!(
-            "{key}: expected a boolean, got {v:?}"
-        ))),
     }
 }
 

@@ -176,9 +176,12 @@ impl FromIterator<(String, Value)> for Attrs {
 
 impl<'a> IntoIterator for &'a Attrs {
     type Item = (&'a str, &'a Value);
-    type IntoIter = Box<dyn Iterator<Item = (&'a str, &'a Value)> + 'a>;
+    type IntoIter = std::iter::Map<
+        std::slice::Iter<'a, (String, Value)>,
+        fn(&'a (String, Value)) -> (&'a str, &'a Value),
+    >;
     fn into_iter(self) -> Self::IntoIter {
-        Box::new(self.iter())
+        self.items.iter().map(|(k, v)| (k.as_str(), v))
     }
 }
 

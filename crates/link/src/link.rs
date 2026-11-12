@@ -68,6 +68,115 @@ fn mbps_to_bytes_per_sec(mbps: f64) -> u64 {
     (mbps * 1_000_000.0 / 8.0) as u64
 }
 
+/// Builder for a [`Link`]: the two endpoints (node names plus optional
+/// ports and optional explicit interface names), the link kind and the TC
+/// params. Keeps the constructor argument lists short.
+///
+/// Port allocation (`Node.newPort`) belongs to the node crate; here ports
+/// default to 0 (and interface names to `node-eth<port>`) when not given.
+///
+/// ```ignore
+/// let link = Link::new(LinkConfig::new("h1", "h2").ports(Some(0), Some(1)))?;
+/// let tc = Link::new(LinkConfig::new("h1", "h2").spec("tc,bw=10,delay=5ms")?)?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct LinkConfig {
+    node1: String,
+    node2: String,
+    port1: Option<u32>,
+    port2: Option<u32>,
+    intf1: Option<String>,
+    intf2: Option<String>,
+    kind: LinkKind,
+    params: LinkParams,
+}
+
+impl LinkConfig {
+    /// New link config between `node1` and `node2`: default link kind and
+    /// params, no ports set (ports default to 0, names to `node-eth<port>`).
+    pub fn new(node1: &str, node2: &str) -> Self {
+        Self {
+            node1: node1.to_string(),
+            node2: node2.to_string(),
+            port1: None,
+            port2: None,
+            intf1: None,
+            intf2: None,
+            kind: LinkKind::Default,
+            params: LinkParams::default(),
+        }
+    }
+
+    /// Port numbers of both ends (`None` leaves the port unset).
+    pub fn ports(mut self, port1: Option<u32>, port2: Option<u32>) -> Self {
+        self.port1 = port1;
+        self.port2 = port2;
+        self
+    }
+
+    /// Explicit interface names for both ends (Python
+    /// `intfName1`/`intfName2`); without them the names are
+    /// `node-eth<port>`.
+    pub fn intf_names(mut self, intf1: impl Into<String>, intf2: impl Into<String>) -> Self {
+        self.intf1 = Some(intf1.into());
+        self.intf2 = Some(intf2.into());
+        self
+    }
+
+    /// Link class (default / tc / tcu / ovs).
+    pub fn kind(mut self, kind: LinkKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    /// TC params applied to both ends (TCLink/TCULink).
+    pub fn params(mut self, params: LinkParams) -> Self {
+        self.params = params;
+        self
+    }
+
+    /// Set the link kind and TC params from a spec string like
+    /// `"tc,bw=10,delay=5ms"` (see [`parse_link_spec`]).
+    pub fn spec(mut self, spec: &str) -> Result<Self> {
+        let parsed = parse_link_spec(spec)?;
+        self.kind = parsed.kind;
+        self.params = parsed.params;
+        Ok(self)
+    }
+
+    /// Build the [`Link`], validating the interface names.
+    pub fn build(self) -> Result<Link> {
+        let LinkConfig {
+            node1,
+            node2,
+            port1,
+            port2,
+            intf1,
+            intf2,
+            kind,
+            params,
+        } = self;
+        let i1 = intf1.unwrap_or_else(|| intf_name(&node1, port1.unwrap_or(0)));
+        let i2 = intf2.unwrap_or_else(|| intf_name(&node2, port2.unwrap_or(0)));
+        mn_netlink::validate_ifname(&i1).map_err(Error::Netlink)?;
+        mn_netlink::validate_ifname(&i2).map_err(Error::Netlink)?;
+        if i1 == i2 {
+            return Err(Error::InvalidInput(format!(
+                "link ends must have different interface names ({i1:?})"
+            )));
+        }
+        Ok(Link {
+            node1: node1.clone(),
+            intf1: Intf::new(i1, &node1, port1),
+            node2: node2.clone(),
+            intf2: Intf::new(i2, &node2, port2),
+            kind,
+            params,
+            attached: false,
+        })
+    }
+}
+
 /// A basic link: a veth pair between two nodes. Port of
 /// `mininet/link.py::Link`.
 #[derive(Debug, Clone)]
@@ -88,62 +197,10 @@ pub struct Link {
 }
 
 impl Link {
-    /// Create a link model between `node1` and `node2` with default
-    /// interface names `node-eth<port>`. Port allocation (`Node.newPort`)
-    /// belongs to the node crate; here ports default to 0 when not given.
-    pub fn new(
-        node1: &str,
-        node2: &str,
-        port1: Option<u32>,
-        port2: Option<u32>,
-        kind: LinkKind,
-        params: LinkParams,
-    ) -> Result<Self> {
-        let p1 = port1.unwrap_or(0);
-        let p2 = port2.unwrap_or(0);
-        Self::with_intf_names(
-            node1,
-            intf_name(node1, p1),
-            port1,
-            node2,
-            intf_name(node2, p2),
-            port2,
-            kind,
-            params,
-        )
-    }
-
-    /// Create a link model with explicit interface names (Python
-    /// `intfName1`/`intfName2`).
-    #[allow(clippy::too_many_arguments)]
-    pub fn with_intf_names(
-        node1: &str,
-        intf1: impl Into<String>,
-        port1: Option<u32>,
-        node2: &str,
-        intf2: impl Into<String>,
-        port2: Option<u32>,
-        kind: LinkKind,
-        params: LinkParams,
-    ) -> Result<Self> {
-        let i1 = intf1.into();
-        let i2 = intf2.into();
-        mn_netlink::validate_ifname(&i1).map_err(Error::Netlink)?;
-        mn_netlink::validate_ifname(&i2).map_err(Error::Netlink)?;
-        if i1 == i2 {
-            return Err(Error::InvalidInput(format!(
-                "link ends must have different interface names ({i1:?})"
-            )));
-        }
-        Ok(Self {
-            node1: node1.to_string(),
-            intf1: Intf::new(i1, node1, port1),
-            node2: node2.to_string(),
-            intf2: Intf::new(i2, node2, port2),
-            kind,
-            params,
-            attached: false,
-        })
+    /// Create a link model from a [`LinkConfig`] builder, e.g.
+    /// `Link::new(LinkConfig::new("h1", "h2").ports(Some(0), Some(1)))`.
+    pub fn new(config: LinkConfig) -> Result<Self> {
+        config.build()
     }
 
     /// Build a link from a spec string, e.g.
@@ -155,8 +212,10 @@ impl Link {
         port2: Option<u32>,
         spec: &str,
     ) -> Result<Self> {
-        let parsed = parse_link_spec(spec)?;
-        Self::new(node1, node2, port1, port2, parsed.kind, parsed.params)
+        LinkConfig::new(node1, node2)
+            .ports(port1, port2)
+            .spec(spec)?
+            .build()
     }
 
     /// Port number of end 1 / end 2 (Python reads them off the intfs).
@@ -174,9 +233,9 @@ impl Link {
         self.attached
     }
 
-    /// Attach the link in the kernel: create the veth pair, bring both ends
-    /// up, assign addresses, install the netem qdisc for TC links, then
-    /// move each end into its node's network namespace.
+    /// Attach the link in the kernel: create the veth pair, configure both
+    /// ends, install the netem qdisc for TC links, then move each end into
+    /// its node's network namespace.
     ///
     /// `node1_pid` / `node2_pid` are the pids whose netns each end belongs
     /// to (Python `node.pid`); `None` leaves the end in the current
@@ -194,38 +253,60 @@ impl Link {
         node1_pid: Option<u32>,
         node2_pid: Option<u32>,
     ) -> Result<()> {
-        let name1 = self.intf1.name.clone();
-        let name2 = self.intf2.name.clone();
-
         // makeIntfPair: delete stale ends, then create the pair (with MACs).
-        ops.nl
-            .veth_create_replacing(&name1, &name2, self.intf1.mac, self.intf2.mac)?;
+        ops.nl.veth_create_replacing(
+            &self.intf1.name,
+            &self.intf2.name,
+            self.intf1.mac,
+            self.intf2.mac,
+        )?;
 
         // Configure while both ends are still local; the config travels
         // with the veth end when it is moved below.
-        ops.nl.link_set_up(&name1, true)?;
-        ops.nl.link_set_up(&name2, true)?;
+        self.configure_ends(ops)?;
+        self.install_qdiscs(ops)?;
+
+        // moveIntf: move each end into its node's netns.
+        self.move_ends(ops, node1_pid, node2_pid)?;
+
+        self.intf1.status = IntfStatus::Up;
+        self.intf2.status = IntfStatus::Up;
+        self.attached = true;
+        Ok(())
+    }
+
+    /// Bring both ends up and assign any configured IP/prefix, while both
+    /// ends are still in the current namespace (the configuration travels
+    /// with the veth end when it is moved).
+    fn configure_ends(&self, ops: &LinkOps) -> Result<()> {
+        ops.nl.link_set_up(&self.intf1.name, true)?;
+        ops.nl.link_set_up(&self.intf2.name, true)?;
         for intf in [&self.intf1, &self.intf2] {
             if let (Some(ip), Some(prefix_len)) = (intf.ip, intf.prefix_len) {
                 ops.nl.addr_add(&intf.name, ip, prefix_len)?;
             }
         }
+        Ok(())
+    }
 
+    /// Install the netem qdisc on both ends for TC links with TC params.
+    fn install_qdiscs(&self, ops: &LinkOps) -> Result<()> {
         if self.kind.uses_tc() && self.params.has_tc() {
             for intf in [&self.intf1, &self.intf2] {
                 // Python clears a pre-existing root qdisc unless it is a
                 // priomap/noqueue qdisc.
                 let root_kind = ops
                     .tc
-                    .qdisc_list(&intf.name)?
+                    .qdisc_list(&ops.nl, &intf.name)?
                     .into_iter()
                     .find(|q| q.parent == crate::tc::TC_H_ROOT)
                     .map(|q| q.kind);
                 if !matches!(root_kind.as_deref(), Some("noqueue") | Some("prio")) {
-                    ops.tc.del_root_qdisc(&intf.name)?;
+                    ops.tc.del_root_qdisc(&ops.nl, &intf.name)?;
                 }
                 let bw = self.params.effective_bw_mbps(&intf.node);
                 ops.tc.add_netem(
+                    &ops.nl,
                     &intf.name,
                     &NetemConfig {
                         delay: self.params.delay,
@@ -237,20 +318,25 @@ impl Link {
                 )?;
             }
         }
+        Ok(())
+    }
 
-        // moveIntf: move each end into its node's netns.
+    /// moveIntf: move each end into its node's netns (`None` leaves the end
+    /// in the current namespace, root-namespace nodes).
+    fn move_ends(
+        &self,
+        ops: &LinkOps,
+        node1_pid: Option<u32>,
+        node2_pid: Option<u32>,
+    ) -> Result<()> {
         if let Some(pid) = node2_pid {
-            ops.nl.move_to_netns_pid(&name2, pid)?;
+            ops.nl.move_to_netns_pid(&self.intf2.name, pid)?;
         }
         if let Some(pid) = node1_pid {
             if pid != std::process::id() {
-                ops.nl.move_to_netns_pid(&name1, pid)?;
+                ops.nl.move_to_netns_pid(&self.intf1.name, pid)?;
             }
         }
-
-        self.intf1.status = IntfStatus::Up;
-        self.intf2.status = IntfStatus::Up;
-        self.attached = true;
         Ok(())
     }
 
@@ -259,9 +345,9 @@ impl Link {
     /// so an end that was moved into another namespace needs no special
     /// handling; if neither end is present locally the link is already gone.
     pub fn delete(&mut self, nl: &Netlink) -> Result<()> {
-        for name in [self.intf1.name.clone(), self.intf2.name.clone()] {
-            if nl.link_index(&name)?.is_some() {
-                nl.link_delete(&name)?;
+        for intf in [&self.intf1, &self.intf2] {
+            if nl.link_index(&intf.name)?.is_some() {
+                nl.link_delete(&intf.name)?;
                 break;
             }
         }
@@ -329,7 +415,12 @@ impl TCLink {
         params: LinkParams,
     ) -> Result<Self> {
         Ok(Self {
-            link: Link::new(node1, node2, port1, port2, LinkKind::Tc, params)?,
+            link: Link::new(
+                LinkConfig::new(node1, node2)
+                    .ports(port1, port2)
+                    .kind(LinkKind::Tc)
+                    .params(params),
+            )?,
         })
     }
 
@@ -387,7 +478,12 @@ impl TCULink {
         params: LinkParams,
     ) -> Result<Self> {
         Ok(Self {
-            link: Link::new(node1, node2, port1, port2, LinkKind::TcU, params)?,
+            link: Link::new(
+                LinkConfig::new(node1, node2)
+                    .ports(port1, port2)
+                    .kind(LinkKind::TcU)
+                    .params(params),
+            )?,
         })
     }
 
@@ -421,21 +517,12 @@ impl std::ops::DerefMut for TCULink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intf::set_ip;
     use crate::root_tests_enabled;
     use std::net::{IpAddr, Ipv4Addr};
 
     #[test]
     fn link_construction_defaults() {
-        let link = Link::new(
-            "h1",
-            "h2",
-            Some(0),
-            Some(1),
-            LinkKind::Default,
-            LinkParams::default(),
-        )
-        .unwrap();
+        let link = Link::new(LinkConfig::new("h1", "h2").ports(Some(0), Some(1))).unwrap();
         assert_eq!(link.intf1.name, "h1-eth0");
         assert_eq!(link.intf2.name, "h2-eth1");
         assert_eq!(link.port1(), Some(0));
@@ -458,28 +545,8 @@ mod tests {
 
     #[test]
     fn link_rejects_bad_names() {
-        assert!(Link::with_intf_names(
-            "h1",
-            "a/b",
-            None,
-            "h2",
-            "h2-eth0",
-            None,
-            LinkKind::Default,
-            LinkParams::default()
-        )
-        .is_err());
-        assert!(Link::with_intf_names(
-            "h1",
-            "same0",
-            None,
-            "h2",
-            "same0",
-            None,
-            LinkKind::Default,
-            LinkParams::default()
-        )
-        .is_err());
+        assert!(Link::new(LinkConfig::new("h1", "h2").intf_names("a/b", "h2-eth0")).is_err());
+        assert!(Link::new(LinkConfig::new("h1", "h2").intf_names("same0", "same0")).is_err());
     }
 
     #[test]
@@ -498,15 +565,7 @@ mod tests {
 
     #[test]
     fn status_aggregation() {
-        let mut link = Link::new(
-            "h1",
-            "h2",
-            None,
-            None,
-            LinkKind::Default,
-            LinkParams::default(),
-        )
-        .unwrap();
+        let mut link = Link::new(LinkConfig::new("h1", "h2")).unwrap();
         link.intf1.status = IntfStatus::Up;
         link.intf2.status = IntfStatus::Up;
         assert_eq!(link.status(), LinkStatus::Up);
@@ -530,7 +589,7 @@ mod tests {
     #[test]
     fn set_ip_helper() {
         let mut intf = Intf::new("h1-eth0", "h1", Some(0));
-        set_ip(&mut intf, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 24);
+        intf.set_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 24);
         assert_eq!(intf.ip, Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
         assert_eq!(intf.prefix_len, Some(24));
     }
@@ -579,9 +638,10 @@ mod tests {
             "tc,bw=10,delay=5ms,jitter=100us,loss=0.1,max_queue_size=200",
         )
         .unwrap();
-        set_ip(&mut link.intf1, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 24);
-        set_ip(&mut link.intf2, IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 24);
-
+        link.intf1
+            .set_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 24);
+        link.intf2
+            .set_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 24);
         // Attach: intf2 is moved into the holder's netns (node2 pid).
         link.attach(&ops, None, Some(holder_pid.as_raw() as u32))
             .expect("attach as root");
@@ -599,11 +659,11 @@ mod tests {
                 .any(|a| a.address == IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)) && a.prefix_len == 24),
             "addr missing in {addrs:?}"
         );
-        let qdiscs = ops.tc.qdisc_list("h1-eth0").unwrap();
+        let qdiscs = ops.tc.qdisc_list(&ops.nl, "h1-eth0").unwrap();
         assert!(
             qdiscs
                 .iter()
-                .any(|q| q.kind == "netem" && q.handle == crate::NETEM_HANDLE),
+                .any(|q| q.kind == "netem" && q.handle == crate::tc::NETEM_HANDLE),
             "netem qdisc missing in {qdiscs:?}"
         );
 
@@ -629,7 +689,7 @@ mod tests {
                                 && a.prefix_len == 24),
                         "addr missing in {addrs:?}"
                     );
-                    let qdiscs = ops.tc.qdisc_list("h2-eth0")?;
+                    let qdiscs = ops.tc.qdisc_list(&ops.nl, "h2-eth0")?;
                     assert!(
                         qdiscs.iter().any(|q| q.kind == "netem"),
                         "netem qdisc missing in {qdiscs:?}"

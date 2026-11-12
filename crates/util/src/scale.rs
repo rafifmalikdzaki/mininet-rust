@@ -53,8 +53,8 @@ pub fn fmt_bps_with(bps: f64, prefix: &str, fmt: &str) -> Option<String> {
     percent_format(fmt, &[PercentValue::Float(bps), PercentValue::Str(prefix)])
 }
 
-/// A value usable with [`percent_format`] (mirrors the values `fmtBps`
-/// passes to `fmt % (bps, prefix)`).
+/// A value usable with the crate-internal `percent_format` engine (mirrors
+/// the values `fmtBps` passes to `fmt % (bps, prefix)`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PercentValue {
     Int(i64),
@@ -163,136 +163,14 @@ pub fn percent_format(fmt: &str, args: &[PercentValue]) -> Option<String> {
             i += 1;
             continue;
         }
-        let mut spec = Spec::default();
-        while i < chars.len() {
-            match chars[i] {
-                '-' => spec.left = true,
-                '+' => spec.plus = true,
-                ' ' => spec.space = true,
-                '0' => spec.zero = true,
-                '#' => spec.alt = true,
-                _ => break,
-            }
-            i += 1;
-        }
-        if i < chars.len() && chars[i] == '*' {
-            i += 1;
-            match args.get(arg_idx) {
-                Some(PercentValue::Int(w)) if *w >= 0 => {
-                    spec.width = Some(*w as usize);
-                    arg_idx += 1;
-                }
-                _ => return None,
-            }
-        } else {
-            let start = i;
-            while i < chars.len() && chars[i].is_ascii_digit() {
-                i += 1;
-            }
-            if i > start {
-                spec.width = Some(chars[start..i].iter().collect::<String>().parse().ok()?);
-            }
-        }
-        if i < chars.len() && chars[i] == '.' {
-            i += 1;
-            if i < chars.len() && chars[i] == '*' {
-                i += 1;
-                match args.get(arg_idx) {
-                    Some(PercentValue::Int(p)) if *p >= 0 => {
-                        spec.prec = Some(*p as usize);
-                        arg_idx += 1;
-                    }
-                    _ => return None,
-                }
-            } else {
-                let start = i;
-                while i < chars.len() && chars[i].is_ascii_digit() {
-                    i += 1;
-                }
-                let p: usize = if i > start {
-                    chars[start..i].iter().collect::<String>().parse().ok()?
-                } else {
-                    0
-                };
-                spec.prec = Some(p);
-            }
-        }
-        if i >= chars.len() {
-            return None;
-        }
-        let conv = chars[i];
-        i += 1;
+        let (spec, conv) = parse_spec(&chars, &mut i, args, &mut arg_idx)?;
         if conv == '%' {
             // '%' with flags/width is a ValueError in CPython
             return None;
         }
         let arg = args.get(arg_idx)?; // TypeError: not enough arguments
         arg_idx += 1;
-        let core = match conv {
-            'd' | 'i' | 'u' => {
-                let v = arg.as_i64()?;
-                if v < 0 {
-                    format!("{v}")
-                } else {
-                    apply_sign(format!("{v}"), &spec)
-                }
-            }
-            'f' | 'F' => {
-                let v = arg.as_f64()?;
-                let p = spec.prec.unwrap_or(6);
-                // Rust's {:.p} rounds half-to-even on the exact binary
-                // value, exactly like CPython's %.pf. Rust prints "NaN"
-                // where CPython prints "nan".
-                apply_sign(lower_nan(format!("{v:.p$}")), &spec)
-            }
-            'e' | 'E' => {
-                let v = arg.as_f64()?;
-                let p = spec.prec.unwrap_or(6);
-                let upper = conv == 'E';
-                // CPython: %e prints 'nan'/'inf', %E prints 'NAN'/'INF'.
-                let mut core = if upper {
-                    format!("{v:.p$E}").replace("NaN", "NAN")
-                } else {
-                    lower_nan(format!("{v:.p$e}"))
-                };
-                if spec.alt && p == 0 {
-                    if let Some(pos) = core.find(['e', 'E']) {
-                        core.insert(pos, '.');
-                    }
-                }
-                fix_exponent(&mut core, upper);
-                apply_sign(core, &spec)
-            }
-            's' => arg.to_python_str(),
-            'x' | 'X' | 'o' => {
-                let v = arg.as_i64()?;
-                let neg = v < 0;
-                let mag = v.unsigned_abs();
-                let digits = match conv {
-                    'x' => format!("{mag:x}"),
-                    'X' => format!("{mag:X}"),
-                    _ => format!("{mag:o}"),
-                };
-                let prefix = match conv {
-                    'x' if spec.alt => "0x",
-                    'X' if spec.alt => "0X",
-                    'o' if spec.alt => "0o",
-                    _ => "",
-                };
-                let core = format!("{prefix}{digits}");
-                if neg {
-                    format!("-{core}")
-                } else {
-                    apply_sign(core, &spec)
-                }
-            }
-            'c' => match arg {
-                PercentValue::Int(v) => char::from_u32(*v as u32)?.to_string(),
-                PercentValue::Str(s) if s.chars().count() == 1 => s.clone(),
-                _ => return None,
-            },
-            _ => return None, // ValueError: unsupported format character
-        };
+        let core = render(conv, arg, &spec)?;
         // CPython ignores the '0' flag for %s and %c (pads with spaces)
         let zero = spec.zero && !matches!(conv, 's' | 'c');
         out.push_str(&pad(&core, &spec, zero));
@@ -301,6 +179,146 @@ pub fn percent_format(fmt: &str, args: &[PercentValue]) -> Option<String> {
         return None; // TypeError: not all arguments converted
     }
     Some(out)
+}
+
+/// Parse one `%...` conversion (the leading `%` already consumed): flags,
+/// width and precision (numeric or `*`, the latter consuming an arg), then
+/// the conversion character. `chars`/`i` are advanced past the conversion.
+fn parse_spec(
+    chars: &[char],
+    i: &mut usize,
+    args: &[PercentValue],
+    arg_idx: &mut usize,
+) -> Option<(Spec, char)> {
+    let mut spec = Spec::default();
+    while *i < chars.len() {
+        match chars[*i] {
+            '-' => spec.left = true,
+            '+' => spec.plus = true,
+            ' ' => spec.space = true,
+            '0' => spec.zero = true,
+            '#' => spec.alt = true,
+            _ => break,
+        }
+        *i += 1;
+    }
+    if *i < chars.len() && chars[*i] == '*' {
+        *i += 1;
+        match args.get(*arg_idx) {
+            Some(PercentValue::Int(w)) if *w >= 0 => {
+                spec.width = Some(*w as usize);
+                *arg_idx += 1;
+            }
+            _ => return None,
+        }
+    } else {
+        let start = *i;
+        while *i < chars.len() && chars[*i].is_ascii_digit() {
+            *i += 1;
+        }
+        if *i > start {
+            spec.width = Some(chars[start..*i].iter().collect::<String>().parse().ok()?);
+        }
+    }
+    if *i < chars.len() && chars[*i] == '.' {
+        *i += 1;
+        if *i < chars.len() && chars[*i] == '*' {
+            *i += 1;
+            match args.get(*arg_idx) {
+                Some(PercentValue::Int(p)) if *p >= 0 => {
+                    spec.prec = Some(*p as usize);
+                    *arg_idx += 1;
+                }
+                _ => return None,
+            }
+        } else {
+            let start = *i;
+            while *i < chars.len() && chars[*i].is_ascii_digit() {
+                *i += 1;
+            }
+            let p: usize = if *i > start {
+                chars[start..*i].iter().collect::<String>().parse().ok()?
+            } else {
+                0
+            };
+            spec.prec = Some(p);
+        }
+    }
+    if *i >= chars.len() {
+        return None;
+    }
+    let conv = chars[*i];
+    *i += 1;
+    Some((spec, conv))
+}
+
+/// Render one conversion's core string (before width/sign padding).
+fn render(conv: char, arg: &PercentValue, spec: &Spec) -> Option<String> {
+    match conv {
+        'd' | 'i' | 'u' => {
+            let v = arg.as_i64()?;
+            if v < 0 {
+                Some(format!("{v}"))
+            } else {
+                Some(apply_sign(format!("{v}"), spec))
+            }
+        }
+        'f' | 'F' => {
+            let v = arg.as_f64()?;
+            let p = spec.prec.unwrap_or(6);
+            // Rust's {:.p} rounds half-to-even on the exact binary
+            // value, exactly like CPython's %.pf. Rust prints "NaN"
+            // where CPython prints "nan".
+            Some(apply_sign(lower_nan(format!("{v:.p$}")), spec))
+        }
+        'e' | 'E' => {
+            let v = arg.as_f64()?;
+            let p = spec.prec.unwrap_or(6);
+            let upper = conv == 'E';
+            // CPython: %e prints 'nan'/'inf', %E prints 'NAN'/'INF'.
+            let mut core = if upper {
+                format!("{v:.p$E}").replace("NaN", "NAN")
+            } else {
+                lower_nan(format!("{v:.p$e}"))
+            };
+            if spec.alt && p == 0 {
+                if let Some(pos) = core.find(['e', 'E']) {
+                    core.insert(pos, '.');
+                }
+            }
+            fix_exponent(&mut core, upper);
+            Some(apply_sign(core, spec))
+        }
+        's' => Some(arg.to_python_str()),
+        'x' | 'X' | 'o' => {
+            let v = arg.as_i64()?;
+            let neg = v < 0;
+            let mag = v.unsigned_abs();
+            let digits = match conv {
+                'x' => format!("{mag:x}"),
+                'X' => format!("{mag:X}"),
+                _ => format!("{mag:o}"),
+            };
+            let prefix = match conv {
+                'x' if spec.alt => "0x",
+                'X' if spec.alt => "0X",
+                'o' if spec.alt => "0o",
+                _ => "",
+            };
+            let core = format!("{prefix}{digits}");
+            Some(if neg {
+                format!("-{core}")
+            } else {
+                apply_sign(core, spec)
+            })
+        }
+        'c' => match arg {
+            PercentValue::Int(v) => Some(char::from_u32(*v as u32)?.to_string()),
+            PercentValue::Str(s) if s.chars().count() == 1 => Some(s.clone()),
+            _ => None,
+        },
+        _ => None, // ValueError: unsupported format character
+    }
 }
 
 /// CPython prints `nan`; Rust's float formatting prints `NaN`.

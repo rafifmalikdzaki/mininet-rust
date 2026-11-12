@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use mn_util::{natural, natural_seq};
 
-use crate::graph::{EdgeEntry, EdgeKey, GraphSink, MultiGraph};
+use crate::graph::{EdgeEntry, EdgeKey, MultiGraph};
 use crate::value::{Attrs, Value};
 
 /// Default options popped from the constructor params by Python's
@@ -171,17 +171,15 @@ pub struct Topo {
 }
 
 impl Topo {
-    /// New empty topo with default options; calls [`Topo::build`] (a no-op
-    /// here, like the Python base class).
+    /// New empty topo with default options (Python `Topo()`; the base
+    /// class's `build()` is a no-op, so this is just [`Topo::with_options`]
+    /// with default options).
     pub fn new() -> Self {
-        let mut t = Self::with_options(TopoOptions::default());
-        t.build();
-        t
+        Self::with_options(TopoOptions::default())
     }
 
     /// New empty topo with the given default host/switch/link options
-    /// (Python `Topo(hopts=..., sopts=..., lopts=...)`), then calls
-    /// [`Topo::build`].
+    /// (Python `Topo(hopts=..., sopts=..., lopts=...)`).
     pub fn with_options(options: TopoOptions) -> Self {
         Self {
             g: MultiGraph::new(),
@@ -191,10 +189,6 @@ impl Topo {
             ports: Ports::new(),
         }
     }
-
-    /// Port of `build(*args, **params)`: override (in a wrapper type) to
-    /// build the topology. The base implementation does nothing.
-    pub fn build(&mut self) {}
 
     /// Port of `addNode(name, **opts)`: add a node to the graph, replacing
     /// any existing attrs for `name`. Returns the name.
@@ -443,8 +437,8 @@ impl Topo {
     }
 
     /// Port of `convertTo(cls, data=True, keys=True)`: convert the backing
-    /// graph to a networkx-MultiGraph-like `T`.
-    pub fn convert_to<T: GraphSink + Default>(&self, data: bool, keys: bool) -> T {
+    /// graph to a new [`MultiGraph`].
+    pub fn convert_to(&self, data: bool, keys: bool) -> MultiGraph {
         self.g.convert_to(data, keys)
     }
 

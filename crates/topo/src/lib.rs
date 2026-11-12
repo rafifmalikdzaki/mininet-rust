@@ -7,7 +7,7 @@
 //!
 //! - [`value`]: [`Value`] / [`Attrs`] — the node/edge attribute dicts
 //!   (insertion-ordered, like CPython dicts).
-//! - [`graph`]: [`MultiGraph`], [`EdgeKey`], [`EdgeEntry`], [`GraphSink`] —
+//! - [`graph`]: [`MultiGraph`], [`EdgeKey`], [`EdgeEntry`] —
 //!   the networkx.MultiGraph replacement with Python's edge-key
 //!   auto-assignment (`max([0] + int keys) + 1`) and aliased
 //!   `edge[src][dst] == edge[dst][src]` entries.
@@ -36,7 +36,7 @@
 //! - `TreeNet` returns the [`TreeTopo`] itself; the Python original wraps it
 //!   in a `Mininet`, which is out of scope for this crate.
 //! - `mininet/topo.py`'s `Topo.convertTo(cls)` accepts any networkx-like
-//!   class; here it is generic over the [`GraphSink`] trait.
+//!   class; here it always produces a [`MultiGraph`].
 //! - Build parameters are `i64`; Python accepts arbitrary ints (and, by
 //!   accident, floats in some `build` signatures).
 
@@ -45,10 +45,14 @@ pub mod topo;
 pub mod topolib;
 pub mod value;
 
-pub use graph::{ConvertedEdge, EdgeEntry, EdgeKey, GraphSink, MultiGraph};
+pub use graph::{EdgeEntry, EdgeKey, MultiGraph};
 pub use topo::{Link, PortLookup, PortMap, Ports, Topo, TopoOptions};
 pub use topolib::{
     build_topo, tree_net, BuiltTopo, LinearTopo, MinimalTopo, SingleSwitchReversedTopo,
     SingleSwitchTopo, TopoError, TorusTopo, TreeTopo,
 };
 pub use value::{Attrs, Value};
+
+/// Convenient result alias used throughout the crate (errors are always
+/// [`TopoError`]).
+pub type Result<T> = std::result::Result<T, TopoError>;

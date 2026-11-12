@@ -39,7 +39,7 @@ pub use args::{split_args, SplitArgs};
 pub use misc::{irange, num_cores, retry};
 pub use natural::{natural, natural_seq, NaturalPart};
 pub use numeric::{check_float, check_int, make_numeric, python_float, python_int, Numeric};
-pub use scale::{
-    fmt_bps, fmt_bps_with, percent_format, python_float_repr, unit_scale, PercentValue,
-    FMT_BPS_DEFAULT,
-};
+// `percent_format`/`python_float_repr` stay crate-internal helpers of
+// `scale` (only `fmt_bps_with` uses them); `PercentValue` remains public as
+// the value type of the %-format engine.
+pub use scale::{fmt_bps, fmt_bps_with, unit_scale, PercentValue, FMT_BPS_DEFAULT};

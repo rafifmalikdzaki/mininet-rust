@@ -50,17 +50,13 @@ mod params;
 mod tc;
 
 pub use error::{Error, Result};
-pub use intf::{intf_name, set_ip, Intf, IntfStatus};
-pub use link::{Link, LinkOps, LinkStatus, TCLink, TCULink};
+pub use intf::{intf_name, Intf, IntfStatus};
+pub use link::{Link, LinkConfig, LinkOps, LinkStatus, TCLink, TCULink};
 pub use ovs::{OVSIntf, OVSLink};
 pub use params::{
     parse_link_spec, parse_time_str, LinkKind, LinkParams, LinkSpec, BW_PARAM_MAX_MBPS,
 };
-pub use tc::{
-    build_netem_options, loss_to_u32, ns_to_psched_ticks, NetemConfig, QdiscInfo, Tc,
-    NETEM_DEFAULT_LIMIT, NETEM_HANDLE, PSCHED_SHIFT, TCA_NETEM_JITTER64, TCA_NETEM_LATENCY64,
-    TCA_NETEM_RATE64, TCA_OPTIONS, TC_H_ROOT,
-};
+pub use tc::{build_netem_options, loss_to_u32, ns_to_psched_ticks, NetemConfig, QdiscInfo, Tc};
 
 /// Whether root/namespace integration tests should actually run.
 ///
