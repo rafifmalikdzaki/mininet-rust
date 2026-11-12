@@ -10,7 +10,11 @@ set -e
 set -o nounset
 
 # Get directory containing mininet folder
-MININET_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd -P )"
+# Repo root = parent of util/, regardless of the checkout directory's name.
+# (Upstream's /../.. only worked because the repo dir is conventionally
+# named "mininet"; on a fork checked out as e.g. "mininet-rust" that path
+# does not exist and `pushd $MININET_DIR/mininet` fails.)
+MININET_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd -P )"
 
 # Set up build directory, which by default is the working directory
 #  unless the working directory is a subdirectory of mininet,
