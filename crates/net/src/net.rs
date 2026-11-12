@@ -1436,7 +1436,7 @@ mod tests {
         assert_eq!(res.ploss, 0.0, "ping output: {}", res.output);
         assert!(
             res.output
-                .contains("*** Results: 0% dropped (1/1 received)"),
+                .contains("*** Results: 0% dropped (2/2 received)"),
             "output: {}",
             res.output
         );

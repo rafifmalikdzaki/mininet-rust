@@ -1049,7 +1049,10 @@ mod tests {
         }
         let tag = format!("mnbr{}", std::process::id() % 100000);
         let br_name = format!("{tag}b");
-        let port = format!("{tag}p");
+        // Python's LinuxBridge.start enslaves interfaces whose *name*
+        // contains the switch name (`if self.name in i.name`), so the port
+        // must be named like "<br>-eth1" — "{tag}p" would be skipped.
+        let port = format!("{br_name}p");
         let peer = format!("{tag}q");
 
         // A veth pair stands in for the switch port; the port end stays in
@@ -1088,9 +1091,13 @@ mod tests {
             .iter()
             .find(|m| msg_ifname(m) == Some(port.as_str()))
             .expect("port exists");
-        assert!(pmsg
-            .attributes
-            .contains(&LinkAttribute::Controller(bmsg.header.index)));
+        assert!(
+            pmsg.attributes
+                .contains(&LinkAttribute::Controller(bmsg.header.index)),
+            "port not enslaved to bridge {br_name} (index {}): port attrs {:?}",
+            bmsg.header.index,
+            pmsg.attributes
+        );
 
         // attach/detach round-trip on a second port.
         let port2 = format!("{tag}r");
@@ -1115,7 +1122,15 @@ mod tests {
             .iter()
             .find(|m| msg_ifname(m) == Some(port2.as_str()))
             .unwrap();
-        assert!(p2.attributes.contains(&LinkAttribute::Controller(0)));
+        // After disenslaving, the kernel simply omits IFLA_MASTER (rather
+        // than reporting it as 0).
+        assert!(
+            !p2.attributes
+                .iter()
+                .any(|a| matches!(a, LinkAttribute::Controller(m) if *m != 0)),
+            "port must be disenslaved after detach: {:?}",
+            p2.attributes
+        );
 
         br.stop(true).expect("LinuxBridge.stop as root");
         assert!(
@@ -1123,10 +1138,12 @@ mod tests {
             "bridge deleted"
         );
 
+        // Deleting one veth end removes the pair, so the peer deletes are
+        // best-effort.
         nl.link_delete(&port).unwrap();
         nl.link_delete(&port2).unwrap();
-        nl.link_delete(&peer).unwrap();
-        nl.link_delete(&peer2).unwrap();
+        let _ = nl.link_delete(&peer);
+        let _ = nl.link_delete(&peer2);
     }
 
     #[test]

@@ -333,8 +333,12 @@ mod tests {
         assert!(nl.link_index(&format!("{peer}r")).unwrap().is_some());
 
         nl.link_delete(&name).unwrap();
-        nl.link_delete(&format!("{peer}r")).unwrap();
+        // Deleting one veth end removes the whole pair, so the renamed peer
+        // is already gone — the second delete must be best-effort (Python's
+        // Intf.delete is likewise a no-op for a missing interface).
+        let _ = nl.link_delete(&format!("{peer}r"));
         assert!(nl.link_index(&name).unwrap().is_none());
+        assert!(nl.link_index(&format!("{peer}r")).unwrap().is_none());
     }
 
     #[test]
@@ -344,8 +348,8 @@ mod tests {
             return;
         }
         use crate::ns::{
-            netns_add, netns_del, netns_path, pipe_pair, send_ready_byte, setns_path_raw,
-            wait_ready_byte,
+            netns_add, netns_del, netns_path, pipe_pair, run_in_netns, send_ready_byte,
+            setns_path_raw, wait_ready_byte,
         };
         use std::ffi::CString;
         use std::os::fd::AsRawFd;
@@ -407,12 +411,22 @@ mod tests {
             "peer must be gone from the current ns after the move"
         );
 
-        // Move it back using our own pid (we are in the original ns).
-        nl.move_to_netns_pid(&peer, std::process::id()).unwrap();
+        // Move it back to our ns. A netdev can only be moved *out of* the
+        // namespace it currently lives in, so the request must come from
+        // inside the holder's ns — run_in_netns forks a child that setns's
+        // into the holder's ns and moves the peer to our pid from there.
+        let self_pid = std::process::id();
+        let peer_in_ns = peer.clone();
+        run_in_netns(holder_pid.as_raw() as u32, move |nl| {
+            nl.move_to_netns_pid(&peer_in_ns, self_pid)
+        })
+        .expect("move back from holder ns");
         assert!(nl.link_index(&peer).unwrap().is_some());
 
         nl.link_delete(&name).unwrap();
-        nl.link_delete(&peer).unwrap();
+        // Deleting one veth end removes the pair — the peer delete is
+        // best-effort.
+        let _ = nl.link_delete(&peer);
         // SAFETY: kill the holder child.
         unsafe { libc::kill(holder_pid.as_raw(), libc::SIGKILL) };
         nix::sys::wait::waitpid(holder_pid, None).ok();

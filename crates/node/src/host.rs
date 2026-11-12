@@ -634,7 +634,18 @@ mod tests {
         }
         let name = format!("mnclh{}", std::process::id() % 100000);
         let mut h = CPULimitedHost::new(&name, "cfs", BTreeMap::new());
-        let root = cgroup_v2_root().expect("cgroup v2 on the test host");
+        let Some(root) = cgroup_v2_root() else {
+            eprintln!("skipping: no cgroup v2 on this test host");
+            return;
+        };
+        // Environmental guard: a container with a read-only cgroup2 mount
+        // cannot create cgroups — skip instead of failing.
+        let probe = root.join(".mn-rw-probe");
+        if std::fs::write(&probe, b"").is_err() {
+            eprintln!("skipping: cgroup2 at {root:?} is not writable");
+            return;
+        }
+        let _ = std::fs::remove_file(&probe);
         let dir = cgroup_dir(&root, &name);
         let _ = std::fs::remove_dir(&dir); // in case a previous run leaked
 
