@@ -259,6 +259,11 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
      24.04); `actions/checkout` bumped v2/v3 → v4.
 - **Why:** CI must be green and environment-independent to be a trustworthy
   gate; dry-run must have zero side effects by construction.
+- **Follow-up (same PR run):** privileged container lacked curl (rust-toolchain
+  step failed) -> apt step moved first and installs curl/ca-certificates;
+  `versioncheck.py` flagged "Mininet +" strings in docs/scripts -> reworded;
+  ubuntu-24.04 removed the apt `pep8` package -> install.sh now installs
+  `python3-pycodestyle` there. Result: rust-ci green on the PR.
 - **Verified:** actionlint clean on all 4 workflows; `cargo test --workspace`
   421 passed / 0 failed / 29 ignored with a CI-like PATH (no ovs-vsctl,
   no mnexec); pyflakes + pep8 clean on PYSRC locally.
