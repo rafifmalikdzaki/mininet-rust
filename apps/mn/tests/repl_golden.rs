@@ -1,4 +1,4 @@
-//! Golden-output tests for the task 10c interactive loop (`mn::repl`, the
+//! Golden-output tests for the task 10c interactive loop (`mnr::repl`, the
 //! port of `mininet/cli.py`'s `CLI` class): each test drives
 //! `repl::run_with_io` with a scripted stdin against a dry-run-built net
 //! (non-root) and compares `out`/`err` byte-for-byte with the expected text.
@@ -17,9 +17,9 @@
 //!   intfs make the ping family deterministic (Python's `ping()` skips the
 //!   `cmd()` when `dest.intfs` is empty, yielding `X` + "No packets sent").
 
-use mn::repl;
 use mn_net::{Mininet, MininetOptions};
 use mn_topo::Attrs;
+use mnr::repl;
 
 /// `single,3` dry-run net, no controller (matches the Python capture).
 fn single3() -> Mininet {

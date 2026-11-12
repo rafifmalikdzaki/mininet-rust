@@ -69,7 +69,7 @@ jobs:
           ovs-vsctl show
 
       # Release build first: scripts/diff_topology.sh prefers
-      # target/release/mn as the Rust side of the differential harness.
+      # target/release/mnr as the Rust side of the differential harness.
       - name: Build the workspace (release)
         run: cargo build --workspace --release
 

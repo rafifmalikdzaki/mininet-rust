@@ -1,5 +1,5 @@
 #!/bin/sh
-# diff_topology.sh — differential test harness: Python mininet vs Rust mn.
+# diff_topology.sh — differential test harness: Python mininet vs Rust mnrr.
 #
 # Task 11 (prep) of tasks/plan.md. Builds the same small topology through BOTH
 # implementations and diffs normalized topology dumps:
@@ -8,16 +8,16 @@
 #       python3 bin/mn --topo <spec> --controller none --test none
 #       (buildTopo + Mininet + net.start() + dump + links + pingall + stop),
 #       capturing stdout.
-#   Rust (port):        <mn binary> --topo <spec> ... --dump
-#       (equivalent to: cargo run -p mn -- --topo <spec> --dump)
+#   Rust (port, binary mnr):        <mn binary> --topo <spec> ... --dump
+#       (equivalent to: cargo run -p mnr -- --topo <spec> --dump)
 #
 # Usage:
 #   scripts/diff_topology.sh <topo-spec>     e.g. single,3 | linear,4 | tree,2,2
 #   (runnable as root: sudo scripts/diff_topology.sh single,3)
 #
 # Environment overrides (applied to BOTH sides so they stay comparable):
-#   MN_RUST_BIN        Rust mn binary (default: target/release/mn, then
-#                      target/debug/mn, else `cargo build -p mn`)
+#   MN_RUST_BIN        Rust mnr binary (default: target/release/mnr, then
+#                      target/debug/mnr, else `cargo build -p mnr`)
 #   DIFF_MN_SWITCH     switch class spec    (default: default)
 #   DIFF_MN_HOST       host class spec      (default: proc)
 #   DIFF_MN_CONTROLLER controller spec      (default: none)
@@ -27,7 +27,7 @@
 # Exit codes:
 #   0  MATCH     normalized outputs identical
 #   1  MISMATCH  normalized outputs differ (diff printed to stderr)
-#   2  SKIP      Rust mn emulation not wired yet (no --dump support); nothing
+#   2  SKIP      Rust mnr emulation not wired yet (no --dump support); nothing
 #               to compare — NOT a failure
 #   3  ERROR     usage / environment / harness failure (message on stderr)
 #
@@ -68,10 +68,10 @@ DIFF_MN_CONTROLLER=${DIFF_MN_CONTROLLER:-none}
 DIFF_MN_LINK=${DIFF_MN_LINK:-default}
 DIFF_MN_IPBASE=${DIFF_MN_IPBASE:-10.0.0.0/8}
 
-# --- locate (or build) the Rust mn binary -----------------------------------
+# --- locate (or build) the Rust mnrr binary -----------------------------------
 MN_BIN=${MN_RUST_BIN:-}
 if [ -z "$MN_BIN" ]; then
-    for cand in "$REPO_ROOT/target/release/mn" "$REPO_ROOT/target/debug/mn"; do
+    for cand in "$REPO_ROOT/target/release/mnr" "$REPO_ROOT/target/debug/mnr"; do
         if [ -x "$cand" ]; then
             MN_BIN=$cand
             break
@@ -80,12 +80,12 @@ if [ -z "$MN_BIN" ]; then
 fi
 if [ -z "$MN_BIN" ]; then
     command -v cargo >/dev/null 2>&1 ||
-        die "no Rust mn binary (target/release/mn, target/debug/mn) and no cargo to build one; set MN_RUST_BIN"
-    info "no prebuilt mn binary; building with: cargo build -p mn"
-    (cd "$REPO_ROOT" && cargo build -p mn) >&2 || die "cargo build -p mn failed"
-    MN_BIN=$REPO_ROOT/target/debug/mn
+        die "no Rust mnr binary (target/release/mnr, target/debug/mnr) and no cargo to build one; set MN_RUST_BIN"
+    info "no prebuilt mn binary; building with: cargo build -p mnr"
+    (cd "$REPO_ROOT" && cargo build -p mnr) >&2 || die "cargo build -p mnr failed"
+    MN_BIN=$REPO_ROOT/target/debug/mnr
 fi
-[ -x "$MN_BIN" ] || die "Rust mn binary not found or not executable: $MN_BIN"
+[ -x "$MN_BIN" ] || die "Rust mnr binary not found or not executable: $MN_BIN"
 
 run_rust_mn() {
     # common flags for both the probe and the real capture
@@ -107,10 +107,10 @@ RUST_RC=$?
 set -e
 
 if [ "$RUST_RC" -eq 0 ]; then
-    info "Rust mn emulation appears wired (--dump exited 0); proceeding"
+    info "Rust mnr emulation appears wired (--dump exited 0); proceeding"
 elif grep -qE 'not yet implemented|unexpected argument|unrecognized|unknown argument' \
         "$RUST_ERR" "$RUST_RAW" 2>/dev/null; then
-    echo "diff_topology: SKIP: Rust mn emulation is not wired yet — nothing to compare."
+    echo "diff_topology: SKIP: Rust mnr emulation is not wired yet — nothing to compare."
     echo "  probe: $MN_BIN --topo $SPEC ... --dump exited $RUST_RC"
     echo "  first probe output line: $(head -n 1 "$RUST_ERR" 2>/dev/null || head -n 1 "$RUST_RAW")"
     echo "  (Python reference side exists; once apps/mn implements --topo/--dump this becomes MATCH/MISMATCH)"
@@ -122,7 +122,7 @@ if [ "$(id -u)" -ne 0 ]; then
     die "full differential run needs root (Python side creates netns/veth pairs); re-run as root: sudo $0 $SPEC"
 fi
 if [ "$RUST_RC" -ne 0 ]; then
-    echo "diff_topology: ERROR: Rust mn --dump failed (rc=$RUST_RC); output:" >&2
+    echo "diff_topology: ERROR: Rust mnr --dump failed (rc=$RUST_RC); output:" >&2
     head -n 20 "$RUST_RAW" "$RUST_ERR" >&2 2>/dev/null || true
     exit 3
 fi
@@ -272,7 +272,7 @@ normalize <"$PY_RAW" >"$PY_NORM"
 normalize <"$RUST_RAW" >"$RUST_NORM"
 
 if diff -u "$PY_NORM" "$RUST_NORM" >"$DIFF_OUT" 2>&1; then
-    info "MATCH: topo spec '$SPEC' — Python and Rust mn outputs identical after normalization"
+    info "MATCH: topo spec '$SPEC' — Python and Rust mnr outputs identical after normalization"
     exit 0
 else
     echo "diff_topology: MISMATCH: topo spec '$SPEC' (normalized diff, python vs rust):" >&2

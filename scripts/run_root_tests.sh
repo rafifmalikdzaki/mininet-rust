@@ -10,7 +10,7 @@
 #      children that change namespaces.
 #   2. The differential topology harness scripts/diff_topology.sh for the
 #      three fixture specs: single,3 linear,4 tree,2,2
-#      (MATCH/MISMATCH/SKIP per spec; SKIP = Rust mn --dump not wired yet).
+#      (MATCH/MISMATCH/SKIP per spec; SKIP = Rust mnr --dump not wired yet).
 #
 # ...and prints a summary table.
 #

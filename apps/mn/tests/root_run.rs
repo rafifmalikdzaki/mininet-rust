@@ -1,6 +1,6 @@
 //! Root-gated end-to-end tests for the wired `mn` (tasks 10b/10c): a real
 //! `single,3` run with `--test pingall`, and the interactive `cli.py` loop
-//! (`mn::repl`) driven with a scripted stdin against the started net, on a
+//! (`mnr::repl`) driven with a scripted stdin against the started net, on a
 //! privileged host.
 //!
 //! Run on a root Linux host with netns support and OVS installed:
@@ -15,7 +15,7 @@ mod support;
 use support::run_mn;
 
 /// Root-gated interactive-loop test (task 10c): build + start a real
-/// `single,3` net, then drive `mn::repl::run_with_io` with a scripted stdin
+/// `single,3` net, then drive `mnr::repl::run_with_io` with a scripted stdin
 /// (`nodes`/`dump`/`links`/`pingall`/`ping h1 h2`/`exit`) and check the
 /// cli.py-format output — real pids in `dump`, `(OK OK)` links, and a 0%-loss
 /// `pingall`.
@@ -41,7 +41,7 @@ fn root_repl_interactive_loop_single3() {
     let mut input = std::io::Cursor::new(script.as_bytes().to_vec());
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let code = mn::repl::run_with_io(&mut net, &mut input, &mut out, &mut err, false, None);
+    let code = mnr::repl::run_with_io(&mut net, &mut input, &mut out, &mut err, false, None);
     let out = String::from_utf8(out).expect("out is UTF-8");
     let err = String::from_utf8(err).expect("err is UTF-8");
     let stop = net.stop();
@@ -156,7 +156,7 @@ fn root_10d_passthrough_link_wait_on_started_net() {
     let mut input = std::io::Cursor::new(script.as_bytes().to_vec());
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let code = mn::repl::run_with_io(&mut net, &mut input, &mut out, &mut err, false, None);
+    let code = mnr::repl::run_with_io(&mut net, &mut input, &mut out, &mut err, false, None);
     let out = String::from_utf8(out).expect("out is UTF-8");
     let err = String::from_utf8(err).expect("err is UTF-8");
     let stop = net.stop();
@@ -213,7 +213,7 @@ fn root_10d_wait_and_xterm_no_display() {
     let mut input = std::io::Cursor::new(script.as_bytes().to_vec());
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let code = mn::repl::run_with_io(&mut net, &mut input, &mut out, &mut err, false, None);
+    let code = mnr::repl::run_with_io(&mut net, &mut input, &mut out, &mut err, false, None);
     let out = String::from_utf8(out).expect("out is UTF-8");
     let err = String::from_utf8(err).expect("err is UTF-8");
     let stop = net.stop();

@@ -56,7 +56,7 @@ pub fn run_with(args: &MnArgs, out: &mut dyn Write, stdin_tty: bool, root: bool)
     match begin(args, out, stdin_tty, root) {
         Ok(code) => code,
         Err(msg) => {
-            eprintln!("mn: {msg}");
+            eprintln!("mnr: {msg}");
             1
         }
     }
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn options_from_maps_bin_mn_defaults() {
-        let opts = options_from(&args(&["mn"])).unwrap();
+        let opts = options_from(&args(&["mnr"])).unwrap();
         assert_eq!(opts.ip_base, "10.0.0.0/8");
         assert_eq!(opts.link_spec, "default");
         assert_eq!(opts.switch_spec, "default");
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn options_from_maps_flags() {
         let opts = options_from(&args(&[
-            "mn",
+            "mnr",
             "--mac",
             "--arp",
             "--pin",
@@ -425,38 +425,38 @@ mod tests {
 
     #[test]
     fn twait_and_test_imply_wait_connected_like_bin_mn() {
-        let opts = options_from(&args(&["mn", "-t", "5"])).unwrap();
+        let opts = options_from(&args(&["mnr", "-t", "5"])).unwrap();
         assert_eq!(opts.wait_connected, WaitConnected::Timed(5.0));
         // bin/mn: tests (other than exactly ['none']) force wait=True
-        let opts = options_from(&args(&["mn", "--test", "pingall"])).unwrap();
+        let opts = options_from(&args(&["mnr", "--test", "pingall"])).unwrap();
         assert_eq!(opts.wait_connected, WaitConnected::Forever);
-        let opts = options_from(&args(&["mn", "--test", "none"])).unwrap();
+        let opts = options_from(&args(&["mnr", "--test", "none"])).unwrap();
         assert_eq!(opts.wait_connected, WaitConnected::Off);
-        let opts = options_from(&args(&["mn", "--test", "none", "--test", "pingall"])).unwrap();
+        let opts = options_from(&args(&["mnr", "--test", "none", "--test", "pingall"])).unwrap();
         assert_eq!(opts.wait_connected, WaitConnected::Forever);
     }
 
     #[test]
     fn user_switch_with_default_link_switches_to_tcu_like_bin_mn() {
-        let opts = options_from(&args(&["mn", "--switch", "user"])).unwrap();
+        let opts = options_from(&args(&["mnr", "--switch", "user"])).unwrap();
         assert_eq!(opts.link_spec, "tcu");
-        let opts = options_from(&args(&["mn", "--switch", "user", "--link", "tc,bw=5"])).unwrap();
+        let opts = options_from(&args(&["mnr", "--switch", "user", "--link", "tc,bw=5"])).unwrap();
         assert_eq!(opts.link_spec, "tc,bw=5");
     }
 
     #[test]
     fn controller_kinds_default_ref_none_and_rejection() {
         assert_eq!(
-            controller_kinds(&args(&["mn"])).unwrap(),
+            controller_kinds(&args(&["mnr"])).unwrap(),
             vec![ControllerKind::Default]
         );
         assert_eq!(
-            controller_kinds(&args(&["mn", "--controller", "none"])).unwrap(),
+            controller_kinds(&args(&["mnr", "--controller", "none"])).unwrap(),
             vec![ControllerKind::None]
         );
         assert_eq!(
             controller_kinds(&args(&[
-                "mn",
+                "mnr",
                 "--controller",
                 "ref",
                 "--controller",
@@ -465,7 +465,7 @@ mod tests {
             .unwrap(),
             vec![ControllerKind::Default, ControllerKind::None]
         );
-        assert!(controller_kinds(&args(&["mn", "--controller", "ryu"])).is_err());
+        assert!(controller_kinds(&args(&["mnr", "--controller", "ryu"])).is_err());
     }
 
     #[test]
@@ -490,18 +490,25 @@ mod tests {
     fn enters_interactive_loop_decision() {
         // no --test, stdin tty -> loop (bin/mn enters CLI(mn) regardless of
         // --xterms since 10d); otherwise dump+stop
-        assert!(enters_interactive_loop(&args(&["mn"]), true));
-        assert!(enters_interactive_loop(&args(&["mn", "-x"]), true));
-        assert!(!enters_interactive_loop(&args(&["mn"]), false));
+        assert!(enters_interactive_loop(&args(&["mnr"]), true));
+        assert!(enters_interactive_loop(&args(&["mnr", "-x"]), true));
+        assert!(!enters_interactive_loop(&args(&["mnr"]), false));
         assert!(!enters_interactive_loop(
-            &args(&["mn", "--test", "none"]),
+            &args(&["mnr", "--test", "none"]),
             true
         ));
     }
 
     #[test]
     fn build_net_single3_model_matches_dry_run() {
-        let net = build_net(&args(&["mn", "--topo", "single,3", "--controller", "none"])).unwrap();
+        let net = build_net(&args(&[
+            "mnr",
+            "--topo",
+            "single,3",
+            "--controller",
+            "none",
+        ]))
+        .unwrap();
         assert!(net.built);
         assert_eq!(net.hosts.len(), 3);
         assert_eq!(net.switches.len(), 1);
@@ -514,7 +521,7 @@ mod tests {
 
     #[test]
     fn build_net_default_controller_is_c0() {
-        let net = build_net(&args(&["mn", "--topo", "single,2"])).unwrap();
+        let net = build_net(&args(&["mnr", "--topo", "single,2"])).unwrap();
         assert!(net.contains("c0"));
         assert!(net
             .dump()
@@ -523,15 +530,22 @@ mod tests {
 
     #[test]
     fn build_net_bad_topo_errors() {
-        assert!(build_net(&args(&["mn", "--topo", "bogus"])).is_err());
-        assert!(build_net(&args(&["mn", "--topo", "tree,x"])).is_err());
+        assert!(build_net(&args(&["mnr", "--topo", "bogus"])).is_err());
+        assert!(build_net(&args(&["mnr", "--topo", "tree,x"])).is_err());
     }
 
     #[test]
     fn run_with_dump_non_root_prints_plan_and_exits_zero() {
         let mut buf: Vec<u8> = Vec::new();
         let code = run_with(
-            &args(&["mn", "--topo", "single,3", "--controller", "none", "--dump"]),
+            &args(&[
+                "mnr",
+                "--topo",
+                "single,3",
+                "--controller",
+                "none",
+                "--dump",
+            ]),
             &mut buf,
             false,
             false, // non-root
@@ -555,7 +569,7 @@ mod tests {
     #[test]
     fn run_with_version_prints_bare_version() {
         let mut buf: Vec<u8> = Vec::new();
-        let code = run_with(&args(&["mn", "--version"]), &mut buf, false, false);
+        let code = run_with(&args(&["mnr", "--version"]), &mut buf, false, false);
         assert_eq!(code, 0);
         assert_eq!(String::from_utf8(buf).unwrap(), "2.3.1b4\n");
     }
@@ -564,9 +578,9 @@ mod tests {
     fn run_with_non_root_real_start_is_a_clear_error() {
         for argv in [
             vec!["mn"],
-            vec!["mn", "--topo", "tree,2,2"],
-            vec!["mn", "--topo", "single,3", "--test", "pingall"],
-            vec!["mn", "--clean"],
+            vec!["mnr", "--topo", "tree,2,2"],
+            vec!["mnr", "--topo", "single,3", "--test", "pingall"],
+            vec!["mnr", "--clean"],
         ] {
             let mut buf: Vec<u8> = Vec::new();
             let code = run_with(&args(&argv), &mut buf, false, false);
@@ -577,11 +591,11 @@ mod tests {
     #[test]
     fn run_with_unsupported_options_error_clearly() {
         for argv in [
-            vec!["mn", "--custom", "foo.py"],
-            vec!["mn", "--pre", "pre.txt"],
-            vec!["mn", "--nat"],
-            vec!["mn", "--cluster", "srv1"],
-            vec!["mn", "--innamespace"],
+            vec!["mnr", "--custom", "foo.py"],
+            vec!["mnr", "--pre", "pre.txt"],
+            vec!["mnr", "--nat"],
+            vec!["mnr", "--cluster", "srv1"],
+            vec!["mnr", "--innamespace"],
         ] {
             let mut buf: Vec<u8> = Vec::new();
             let code = run_with(&args(&argv), &mut buf, false, false);

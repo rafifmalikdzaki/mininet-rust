@@ -16,3 +16,6 @@ trunk
 # Rust build artifacts
 /target/
 !/apps/mnexec/
+
+# Sphinx build output
+docs/_build/

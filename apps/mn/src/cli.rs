@@ -34,7 +34,7 @@ pub const VERSION: &str = "2.3.1b4";
 // into long_help text.)
 #[derive(Debug, Clone, Parser)]
 #[command(
-    name = "mn",
+    name = "mnr",
     disable_version_flag = true,
     about = "The mn utility creates Mininet network from the command line. It can create parametrized topologies, invoke the Mininet CLI, and run tests."
 )]
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn defaults_match_bin_mn() {
-        let args = parse(&["mn"]).expect("bare `mn` must parse");
+        let args = parse(&["mnr"]).expect("bare `mn` must parse");
         assert_eq!(args.switch, "default");
         assert_eq!(args.host, "proc");
         assert!(args.controller.is_empty());
@@ -390,7 +390,7 @@ mod tests {
 
     #[test]
     fn representative_topo_and_link_args() {
-        let args = parse(&["mn", "--topo", "tree,2,2", "--link", "tc,bw=10,delay=5ms"])
+        let args = parse(&["mnr", "--topo", "tree,2,2", "--link", "tc,bw=10,delay=5ms"])
             .expect("representative argv must parse");
         let topo = args.topo_spec();
         assert_eq!(topo.name, "tree");
@@ -463,39 +463,39 @@ mod tests {
     #[test]
     fn nat_flag_optional_value() {
         // `--nat` alone: flag present, no params (bin/mn's setNat with empty rargs)
-        let args = parse(&["mn", "--nat"]).expect("--nat must parse");
+        let args = parse(&["mnr", "--nat"]).expect("--nat must parse");
         assert!(args.nat_enabled());
         assert_eq!(args.nat.as_deref(), Some(""));
 
         // `--nat foo=bar`: following non-option arg consumed as NAT params
-        let args = parse(&["mn", "--nat", "foo=bar"]).expect("--nat foo=bar must parse");
+        let args = parse(&["mnr", "--nat", "foo=bar"]).expect("--nat foo=bar must parse");
         assert_eq!(args.nat.as_deref(), Some("foo=bar"));
 
         // `--nat` followed by another option: not consumed
-        let args = parse(&["mn", "--nat", "--mac"]).expect("--nat --mac must parse");
+        let args = parse(&["mnr", "--nat", "--mac"]).expect("--nat --mac must parse");
         assert_eq!(args.nat.as_deref(), Some(""));
         assert!(args.mac);
 
         // absent
-        let args = parse(&["mn"]).expect("bare mn must parse");
+        let args = parse(&["mnr"]).expect("bare mn must parse");
         assert!(!args.nat_enabled());
         assert_eq!(args.nat, None);
     }
 
     #[test]
     fn version_flag_is_recognized() {
-        let args = parse(&["mn", "--version"]).expect("--version must parse");
+        let args = parse(&["mnr", "--version"]).expect("--version must parse");
         assert!(args.version);
     }
 
     #[test]
     fn choice_options_validate_like_optparse() {
-        let args = parse(&["mn", "--placement", "random", "-v", "warn"]).unwrap();
+        let args = parse(&["mnr", "--placement", "random", "-v", "warn"]).unwrap();
         assert_eq!(args.placement, "random");
         assert_eq!(args.verbosity, "warn");
 
-        assert!(parse(&["mn", "--placement", "bogus"]).is_err());
-        assert!(parse(&["mn", "-v", "bogus"]).is_err());
+        assert!(parse(&["mnr", "--placement", "bogus"]).is_err());
+        assert!(parse(&["mnr", "-v", "bogus"]).is_err());
     }
 
     #[test]
@@ -534,8 +534,8 @@ mod tests {
     #[test]
     fn unknown_option_and_extra_positional_are_rejected() {
         // optparse: "no such option: --bogus" (exit 2); extra args: help + exit
-        assert!(parse(&["mn", "--bogus"]).is_err());
-        assert!(parse(&["mn", "extra-arg"]).is_err());
+        assert!(parse(&["mnr", "--bogus"]).is_err());
+        assert!(parse(&["mnr", "extra-arg"]).is_err());
     }
 
     #[test]

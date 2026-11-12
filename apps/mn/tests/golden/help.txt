@@ -1,6 +1,6 @@
 The mn utility creates Mininet network from the command line. It can create parametrized topologies, invoke the Mininet CLI, and run tests.
 
-Usage: mn [OPTIONS]
+Usage: mnr [OPTIONS]
 
 Options:
       --switch <SWITCH>               default|ivs|lxbr|ovs|ovsbr|ovsk|user[,param=value...] user=UserSwitch ovs=OVSSwitch ovsbr=OVSBridge ovsk=OVSSwitch ivs=IVSSwitch lxbr=LinuxBridge default=OVSSwitch [default: default]

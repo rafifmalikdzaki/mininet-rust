@@ -18,7 +18,7 @@ Requires a recent stable Rust toolchain (`rust-toolchain.toml` pins
 `stable`; `Cargo.lock` is committed):
 
 ```bash
-cargo build --release          # workspace -> target/release/mn, target/release/mnexec
+cargo build --release          # workspace -> target/release/mnr, target/release/mnexec
 cargo build --workspace        # debug build
 ```
 
@@ -28,16 +28,16 @@ cargo build --workspace        # debug build
 `mn`):
 
 ```bash
-sudo target/release/mn --topo single,3                 # build + start + interactive CLI
-sudo target/release/mn --topo linear,4 --test pingall  # build + built-in test + stop
-sudo target/release/mn --clean                         # clean up leftover netns/links
+sudo target/release/mnrr --topo single,3                 # build + start + interactive CLI
+sudo target/release/mnrr --topo linear,4 --test pingall  # build + built-in test + stop
+sudo target/release/mnrr --clean                         # clean up leftover netns/links
 ```
 
 Without root, the parse → build → plan path works as a **dry run** via the
 harness-only `--dump` flag (see D14 in `docs/migration/DECISIONS.md`):
 
 ```bash
-target/release/mn --topo single,3 --dump    # prints === topo === / === dump === / === links ===, exit 0, no root
+target/release/mnr --topo single,3 --dump    # prints === topo === / === dump === / === links ===, exit 0, no root
 ```
 
 `--dump` is exactly what `scripts/diff_topology.sh` probes to diff the Rust
@@ -113,7 +113,7 @@ Works today:
 - `mn-node`, `mn-net` — Node/Host/Switch/Controller model + `Mininet`
   orchestrator with a pure build and explicit `start()`/`stop()`; dry-run
   (`--dump`) works non-root.
-- `mn` CLI — full `bin/mn` option surface (clap; golden help + differential
+- `mnr` CLI — full `bin/mn` option surface (clap; golden help + differential
   option-set tests), `--topo/--test/--clean/--dump`, and the interactive
   REPL command set (`nodes links dump net ports intfs hosts switches
   controllers ping pingall pingallfull pingpair pingpairfull iperf iperfudp

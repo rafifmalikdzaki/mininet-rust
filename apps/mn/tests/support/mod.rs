@@ -10,7 +10,7 @@ use std::process::{Command, Output};
 
 /// Absolute path to the compiled `mn` binary under test.
 pub fn mn_bin() -> &'static str {
-    env!("CARGO_BIN_EXE_mn")
+    env!("CARGO_BIN_EXE_mnr")
 }
 
 /// Run `mn` with the given args, capturing output.

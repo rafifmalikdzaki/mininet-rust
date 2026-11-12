@@ -15,9 +15,9 @@
 //! a deviation in `repl.rs`. Real xterm/passthrough execution is root-gated
 //! in `root_run.rs`.
 
-use mn::repl;
 use mn_net::{Mininet, MininetOptions};
 use mn_topo::Attrs;
+use mnr::repl;
 
 /// `single,3` dry-run net, no controller (matches the Python captures).
 fn single3() -> Mininet {

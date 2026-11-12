@@ -45,16 +45,16 @@ topologies.
   sudo env PYTHONPATH=. python3 bin/mn --topo tree,2,2  --test none
 
   # Rust port
-  sudo target/release/mn --topo single,3 --test none
-  sudo target/release/mn --topo linear,4 --test pingall
-  sudo target/release/mn --topo tree,2,2  --test none
+  sudo target/release/mnrr --topo single,3 --test none
+  sudo target/release/mnrr --topo linear,4 --test pingall
+  sudo target/release/mnrr --topo tree,2,2  --test none
   ```
 
   Plus the **non-root dry-run path** (parse → build → plan → `--dump`), which
   needs no privileges and is what most CI/dev machines can run:
 
   ```bash
-  target/release/mn --topo tree,2,2 --dump                                   # Rust
+  target/release/mnr --topo tree,2,2 --dump                                   # Rust
   python3 -c 'import sys; sys.path.insert(0,"."); from mininet.topo import TreeTopo; t=TreeTopo(2,2); print(t.nodes())'  # Python topo build only
   ```
 

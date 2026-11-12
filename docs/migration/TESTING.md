@@ -41,7 +41,7 @@ Script-level smoke checks (also fine unprivileged):
 ```bash
 bash -n scripts/diff_topology.sh scripts/run_root_tests.sh   # syntax
 scripts/diff_topology.sh single,3
-# -> prints SKIP (Rust mn emulation not wired yet) and exits 2 — expected
+# -> prints SKIP (Rust mnr emulation not wired yet) and exits 2 — expected
 #    until apps/mn implements --topo/--dump; NOT a failure
 scripts/run_root_tests.sh
 # -> prints the root-required error and exits 3 without running anything
@@ -108,8 +108,8 @@ class flags (`DIFF_MN_SWITCH`/`DIFF_MN_HOST`/`DIFF_MN_CONTROLLER`/`DIFF_MN_LINK`
   (`util/install.sh`; the default switch `OVSSwitch` needs `ovs-vsctl` — set
   e.g. `DIFF_MN_SWITCH=lxbr` to use `LinuxBridge`/`brctl` instead).
 - **Rust port** — `<mn binary> --topo <spec> ... --dump`
-  (`target/release/mn` or `target/debug/mn`, else `cargo build -p mn`; override
-  with `MN_RUST_BIN`). Equivalent to `cargo run -p mn -- --topo <spec> --dump`.
+  (`target/release/mnr` or `target/debug/mnr`, else `cargo build -p mnr`; override
+  with `MN_RUST_BIN`). Equivalent to `cargo run -p mnr -- --topo <spec> --dump`.
 
 Both outputs are normalized before diffing — `pid=<n>` → `pid=<PID>`, ISO
 timestamps stripped, `completed in …` lines dropped, trailing whitespace
@@ -192,7 +192,7 @@ run here; they are written and smoke-tested only:
 
 ```bash
 bash -n scripts/diff_topology.sh scripts/run_root_tests.sh   # pass
-scripts/diff_topology.sh single,3   # -> SKIP, exit 2 (Rust mn --dump not wired yet)
+scripts/diff_topology.sh single,3   # -> SKIP, exit 2 (Rust mnr --dump not wired yet)
 scripts/run_root_tests.sh           # -> root-required error, exit 3, nothing executed
 ```
 
