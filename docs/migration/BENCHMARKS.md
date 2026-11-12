@@ -43,18 +43,43 @@ harness and uploads `bench-results.md` as the `bench-results` artifact.
 
 ## Results
 
-*To be filled from the privileged CI run (this dev sandbox is non-root).*
+From the privileged CI run on PR #1 (run 43306962340, artifact
+`bench-results`, commit `3d7554a`; host: Linux 7.0.0-1019-azure, 4 vCPU Xeon
+Platinum 8573C, Python 3.12.3, `--switch lxbr` on both sides because the CI
+container has no OVS kernel datapath module; 5 runs + 1 warmup per cell;
+metric: wall time of `--topo <spec> --controller none --test pingall`):
 
 | scenario | nodes | impl | wall s median | wall s min | wall s max | ping loss |
 |---|---|---|---|---|---|---|
-| single,3 | 4 | python | TBD | TBD | TBD | TBD |
-| single,3 | 4 | rust (mnr) | TBD | TBD | TBD | TBD |
-| … | | | | | | |
+| single,3 | 4 | python | 0.148 | 0.145 | 0.150 | 0% |
+| single,3 | 4 | rust (mnr) | 0.160 | 0.157 | 0.187 | 0% |
+| linear,4 | 8 | python | 0.280 | 0.273 | 0.300 | 0% |
+| linear,4 | 8 | rust (mnr) | 0.299 | 0.289 | 0.316 | 0% |
+| linear,10 | 20 | python | 0.741 | 0.707 | 0.749 | 0% |
+| linear,10 | 20 | rust (mnr) | 1.116 | 1.105 | 1.126 | 0% |
+| tree,2,2 | 7 | python | 0.236 | 0.234 | 0.249 | 0% |
+| tree,2,2 | 7 | rust (mnr) | 0.289 | 0.269 | 0.305 | 0% |
+| tree,3,2 | 15 | python | 0.536 | 0.520 | 0.549 | 0% |
+| tree,3,2 | 15 | rust (mnr) | 0.762 | 0.745 | 0.779 | 0% |
+| tree,3,3 | 40 | python | 1.924 | 1.905 | 1.943 | 0% |
+| tree,3,3 | 40 | rust (mnr) | 5.142 | 5.115 | 5.162 | 0% |
+
+**Reading:** behavior matches exactly (see the differential harness MATCHes in
+the same CI run: `scripts/diff_topology.sh` MATCH for all six specs), and ping
+loss is 0% on both sides everywhere. Wall-clock, the Rust port is currently
+~1.1x (single,3) to ~2.7x (tree,3,3) *slower* end-to-end than Python — the gap
+grows with node count because each host start spawns an `mnexec`-attached
+shell plus per-node netlink round trips, while Python amortizes setup in one
+`mnexec` batch per node. The netlink data path itself is not the bottleneck
+at these sizes; process/netns spawn dominates. This is a known, measured
+trade-off of the deferred-lifecycle design, not a correctness issue — and it
+is where future optimization effort has the highest value (see ROADMAP).
 
 ## Notes / limitations
 
 - Wall time includes process spawn, netns/veth/qdisc setup, pingall, teardown.
-- `--test pingall` on a switch-bearing topo requires the switch to start;
-  the ladder uses the default `ovs` switch, so OVS must be running (CI starts
-  ovsdb-server/ovs-vswitchd). Host-to-host ping crosses the OVS bridge.
-- For pure link-setup cost without OVS, add `--switch lxbr` variants later.
+- CI runs the ladder with `BENCH_SWITCH=lxbr` (kernel LinuxBridge) because
+  the privileged GH container cannot load the OVS kernel datapath module;
+  OVS-based runs remain covered by the VM workflows (`run-tests.yaml`).
+- The `tree,3,3` rung (40 nodes, 702 pings) is the heaviest; per-run variance
+  is small (min/max within ~1%), so medians are stable.

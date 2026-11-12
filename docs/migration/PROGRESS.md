@@ -64,12 +64,35 @@ Gates now: 410 passed / 0 failed / 29 ignored (root-gated).
   active_model zai-glm-5-3-flash) but needs `/reload` in the Vibe session to be
   discoverable; until then workers run on the session model.
 
+## CI status (2026-11-13, head 3d7554a, PR #1 run 43306962340): ALL 4 GREEN
+- rust-ci, code-check, mininet-tests, rust-root-tests all success.
+- rust-root-tests: all root-gated cargo suites pass in the privileged
+  container; `diff_topology.sh` MATCH for all 6 ladder specs (single,3,
+  linear,4, linear,10, tree,2,2, tree,3,2, tree,3,3) with lxbr; benchmark
+  ladder uploaded as the `bench-results` artifact (results now in
+  BENCHMARKS.md).
+- Local gates: fmt clean, clippy `-D warnings` 0 errors, `cargo test
+  --workspace` 419+ passed (3 failures in this sandbox only, reproduced on
+  the pre-change HEAD: leftover veth in the sandbox netns breaks 3 dry-run
+  tests; they pass on CI).
+
+## This session's commits (CI repair + latent root-test fixes, D23/D24)
+| 3afcfd6 | netlink/link: qdiscs installed after the netns move, per-end in its own ns (Tc is now a unit struct on &Netlink) |
+| 7044fcf | latent root-test fixes: veth-pair delete, netns move-back, pingall 2/2, bridge port naming, cgroup ro skip |
+| 9f80cef | ci: iputils-ping + controller shim + cgroup2 remount in root-tests |
+| 7a6a92e | docs: D23 |
+| 70882dd | bridge lifecycle cleanup best-effort |
+| a035f97 | modprobe openvswitch; run_mn timeout; pingall -W in repl tests |
+| 10ff305 | NetSwitch::attach after link.attach; Node::started_flag for shell-less lxbr |
+| 803ee87 | root app/tui/mcp tests use lxbr; pid assertions hosts-only |
+| fc2930e | docs: D24 |
+| f93246b | ci: python3-packaging (py3.12 has no distutils) |
+| 20acb77 | ci: diff harness + benchmarks run with lxbr in the container; step timeouts |
+| 3d7554a | diff_topology: append pingall section to Rust capture; normalize pid=None |
+
 ## Next actions
-1. PR #1 (rust-migration -> master on the fork) is open; CI was red and is
-   now fixed locally-verified (D22): watch the privileged `rust-root-tests`
-   job and the benchmark ladder artifact.
-2. Fill docs/migration/BENCHMARKS.md results table from the CI `bench-results`
-   artifact (python mn vs mnr ladder) once the privileged job runs green.
-3. Reviewer pass (five-axis) over the branch diff, then merge PR #1.
-4. Post-merge roadmap: see docs/migration/ROADMAP.md (HTB via netlink, NOX/Ryu
-   stubs, miniedit/cluster/mobility, --innamespace/--custom).
+1. Five-axis reviewer pass over the branch diff (see review verdict in the PR
+   / session), then merge PR #1 (rust-migration -> master on the fork).
+2. Post-merge roadmap: docs/migration/ROADMAP.md (HTB bw via netlink, NOX/Ryu
+   stubs, miniedit/cluster/mobility, --innamespace/--custom, perf: cut per-node
+   shell spawn cost — see BENCHMARKS.md reading).
