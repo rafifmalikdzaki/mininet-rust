@@ -253,12 +253,17 @@ impl Tc {
         // Delete by the root qdisc's actual handle: with handle=UNSPEC the
         // kernel can match a handle-0 `noqueue` qdisc and ACK without
         // removing the netem qdisc (observed on ubuntu-24.04 CI).
-        let handle = self
+        // If nothing but a handle-0 default qdisc (noqueue) sits at root,
+        // there is nothing to delete — and deleting handle 0 would just
+        // ENOENT. (Python likewise skips noqueue/prio.)
+        let Some(handle) = self
             .qdisc_list(nl, ifname)?
             .into_iter()
             .find(|q| q.parent == TC_H_ROOT && q.handle != 0)
             .map(|q| q.handle)
-            .unwrap_or(TcHandle::UNSPEC.into());
+        else {
+            return Ok(());
+        };
         let mut msg = TcMessage::with_index(index as i32);
         msg.header.parent = TcHandle::ROOT;
         msg.header.handle = TcHandle::from(handle);

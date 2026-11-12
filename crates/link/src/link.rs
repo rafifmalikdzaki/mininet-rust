@@ -261,13 +261,17 @@ impl Link {
             self.intf2.mac,
         )?;
 
-        // Configure while both ends are still local; the config travels
-        // with the veth end when it is moved below.
-        self.configure_ends(ops)?;
+        // Qdiscs attach to the device and travel with the end on a netns
+        // move, so install them while both ends are still local.
         self.install_qdiscs(ops)?;
 
-        // moveIntf: move each end into its node's netns.
+        // moveIntf: move each end into its node's netns first. The kernel
+        // drops IFF_UP and addresses on a netns move (verified against
+        // iproute2), and Python configures the interface inside the node
+        // after the move — so configure (up + addr) each end in its own
+        // namespace afterwards.
         self.move_ends(ops, node1_pid, node2_pid)?;
+        self.configure_ends(ops, node1_pid, node2_pid)?;
 
         self.intf1.status = IntfStatus::Up;
         self.intf2.status = IntfStatus::Up;
@@ -275,15 +279,37 @@ impl Link {
         Ok(())
     }
 
-    /// Bring both ends up and assign any configured IP/prefix, while both
-    /// ends are still in the current namespace (the configuration travels
-    /// with the veth end when it is moved).
-    fn configure_ends(&self, ops: &LinkOps) -> Result<()> {
-        ops.nl.link_set_up(&self.intf1.name, true)?;
-        ops.nl.link_set_up(&self.intf2.name, true)?;
-        for intf in [&self.intf1, &self.intf2] {
-            if let (Some(ip), Some(prefix_len)) = (intf.ip, intf.prefix_len) {
-                ops.nl.addr_add(&intf.name, ip, prefix_len)?;
+    /// Bring each end up and assign any configured IP/prefix, in the
+    /// namespace the end lives in after `move_ends` (locally for
+    /// root-namespace ends, via a forked child for namespaced nodes).
+    fn configure_ends(
+        &self,
+        ops: &LinkOps,
+        node1_pid: Option<u32>,
+        node2_pid: Option<u32>,
+    ) -> Result<()> {
+        for (intf, pid) in [(&self.intf1, node1_pid), (&self.intf2, node2_pid)] {
+            let name = intf.name.clone();
+            let ip = intf.ip;
+            let prefix_len = intf.prefix_len;
+            let local = match pid {
+                None => true,
+                Some(p) => p == std::process::id(),
+            };
+            if local {
+                ops.nl.link_set_up(&name, true)?;
+                if let (Some(ip), Some(prefix_len)) = (ip, prefix_len) {
+                    ops.nl.addr_add(&name, ip, prefix_len)?;
+                }
+            } else {
+                let pid = pid.unwrap();
+                mn_netlink::run_in_netns(pid, move |nl| {
+                    nl.link_set_up(&name, true)?;
+                    if let (Some(ip), Some(prefix_len)) = (ip, prefix_len) {
+                        nl.addr_add(&name, ip, prefix_len)?;
+                    }
+                    Ok(())
+                })?;
             }
         }
         Ok(())
