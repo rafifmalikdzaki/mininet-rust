@@ -242,9 +242,18 @@ impl Tc {
     /// `nl` resolves the interface name to its index.
     pub fn del_root_qdisc(&self, nl: &Netlink, ifname: &str) -> Result<()> {
         let index = require_index(nl, ifname)?;
+        // Delete by the root qdisc's actual handle: with handle=UNSPEC the
+        // kernel can match a handle-0 `noqueue` qdisc and ACK without
+        // removing the netem qdisc (observed on ubuntu-24.04 CI).
+        let handle = self
+            .qdisc_list(nl, ifname)?
+            .into_iter()
+            .find(|q| q.parent == TC_H_ROOT && q.handle != 0)
+            .map(|q| q.handle)
+            .unwrap_or(0);
         let mut msg = TcMessage::with_index(index as i32);
         msg.header.parent = TcHandle::ROOT;
-        msg.header.handle = TcHandle::UNSPEC;
+        msg.header.handle = TcHandle::from(handle);
         self.send_qdisc(RouteNetlinkMessage::DelQueueDiscipline(msg), 0)
     }
 

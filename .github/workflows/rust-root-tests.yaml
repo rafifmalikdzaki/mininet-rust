@@ -90,6 +90,8 @@ jobs:
       # 1. Root-gated netlink/netns integration tests (#[ignore] + env gate,
       #    serialized because some tests fork children that change namespaces).
       - name: Root-gated cargo tests (MN_RUST_ROOT_TESTS=1)
+        env:
+          RUST_BACKTRACE: 1
         run: MN_RUST_ROOT_TESTS=1 cargo test --workspace -- --ignored --test-threads=1
 
       # 2. One-shot root suite: re-runs the root-gated cargo tests and then
