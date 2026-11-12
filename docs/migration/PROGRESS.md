@@ -65,8 +65,11 @@ Gates now: 410 passed / 0 failed / 29 ignored (root-gated).
   discoverable; until then workers run on the session model.
 
 ## Next actions
-1. Land 8b + 9 after PE/design review; commit atomically.
-2. Task 10b: wire apps/mn to mn-net (--topo/--dump/--test), non-root dry-run.
-3. Task 10c: repl.rs interactive loop, 2-3 commands per commit, golden tests.
-4. nodelib (LinuxBridge/NAT/CPULimitedHost), then privileged CI run of T11.
-5. T12: DECISIONS/PROGRESS/BENCHMARKS upkeep, README, privileged CI job, PR to master.
+1. PR #1 (rust-migration -> master on the fork) is open; CI was red and is
+   now fixed locally-verified (D22): watch the privileged `rust-root-tests`
+   job and the benchmark ladder artifact.
+2. Fill docs/migration/BENCHMARKS.md results table from the CI `bench-results`
+   artifact (python mn vs mnr ladder) once the privileged job runs green.
+3. Reviewer pass (five-axis) over the branch diff, then merge PR #1.
+4. Post-merge roadmap: see docs/migration/ROADMAP.md (HTB via netlink, NOX/Ryu
+   stubs, miniedit/cluster/mobility, --innamespace/--custom).

@@ -234,3 +234,31 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   median/min/max wall time of `--test pingall` + ping loss, N runs + warmup,
   host metadata captured; run only after `diff_topology.sh` MATCHes the same
   specs (fast-but-wrong is not a win). CI uploads the markdown table.
+
+## D22 — CI repairs (fork reality: runner image drift + fork checkout name)
+- **Decision:** four CI defects found by a red PR run, each fixed at the root:
+  1. `rust-root-tests.yaml` had a job-level `allow-failure:` key — invalid
+     there (only valid in `strategy.matrix`), so GitHub rejected the whole
+     workflow file and the run failed in 0s with **zero jobs**. Removed
+     (false is the default); `actionlint` now runs as a step in `rust-ci`
+     to catch workflow-schema regressions before push.
+  2. `switch <sw> start|stop` on a non-started (dry-run) net spawned
+     `ovs-vsctl --if-exists del-br` on the host — env-dependent test failure
+     on CI (no ovs-vsctl installed) *and* a real hazard (a dry-run could
+     delete a real bridge). `Mininet` now tracks `started` (`is_started()`)
+     and the repl treats switch start/stop as a silent no-op on dry-run nets.
+  3. `util/install.sh` computed `MININET_DIR` as `util/../..` (the checkout's
+     *parent*) — only correct when the checkout dir is named `mininet`; on
+     this fork (`mininet-rust`) `pushd $MININET_DIR/mininet` failed in CI.
+     Now `util/..` (repo root), correct for any checkout name.
+  4. Legacy Python workflows modernized: `code-check` pins ubuntu-24.04 +
+     Python 3.11 and pip-installs pylint==2.15.7/pyflakes/pep8 (the apt `pep8`
+     package is gone on ubuntu-26.04 and mininet needs `distutils`, i.e.
+     Python ≤ 3.11); `run-tests` matrix reduced to ubuntu-22.04/24.04 ×
+     python3 (ubuntu-20.04 runners retired by GitHub, python2 gone from
+     24.04); `actions/checkout` bumped v2/v3 → v4.
+- **Why:** CI must be green and environment-independent to be a trustworthy
+  gate; dry-run must have zero side effects by construction.
+- **Verified:** actionlint clean on all 4 workflows; `cargo test --workspace`
+  421 passed / 0 failed / 29 ignored with a CI-like PATH (no ovs-vsctl,
+  no mnexec); pyflakes + pep8 clean on PYSRC locally.
