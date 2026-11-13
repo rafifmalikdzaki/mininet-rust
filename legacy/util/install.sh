@@ -257,8 +257,8 @@ function of {
     git clone https://github.com/mininet/openflow
     cd $BUILD_DIR/openflow
 
-    # Patch controller to handle more than 16 switches
-    patch -p1 < $MININET_DIR/mininet/util/openflow-patches/controller.patch
+    # NOTE: the OpenFlow reference-switch C patches (util/openflow-patches/)
+    # were removed from this tree (no C artifacts); skip patching.
 
     # Resume the install:
     ./boot.sh

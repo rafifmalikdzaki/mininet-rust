@@ -58,7 +58,7 @@ What is ported
      - ported, Python-order start/stop, exact dump/links
    * - ``cli.py`` REPL + ``bin/mn``
      - ported, golden-tested vs live CPython sessions
-   * - ``mnexec.c``
+   * - ``mnexec`` helper (was C, now pure Rust)
      - ported as ``apps/mnexec`` (byte-identical usage)
    * - ``mnr-tui``
      - OMO-style live graph TUI (see :doc:`tui`)

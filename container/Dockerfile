@@ -19,9 +19,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY apps apps
 COPY bindings bindings
-COPY legacy/mnexec.c ./
-RUN cargo build --workspace --release \
-    && cc -O2 -Wall -DVERSION='"2.3.1b4"' legacy/mnexec.c -o mnexec
+RUN cargo build --workspace --release
 
 FROM ubuntu:24.04
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \

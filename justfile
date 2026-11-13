@@ -58,7 +58,7 @@ root-tests-docker:
             apt-get install -y -qq --no-install-recommends \
                 ca-certificates curl python3 python3-packaging iproute2 \
                 net-tools bridge-utils ethtool iptables iputils-ping \
-                gcc make libc6-dev >/dev/null 2>&1; \
+                >/dev/null 2>&1; \
             test -d /root/.cargo/bin || curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable >/dev/null 2>&1; \
             export PATH=$PATH:/root/.cargo/bin; \
             MN_RUST_ROOT_TESTS=1 cargo test --workspace --no-fail-fast \
@@ -114,4 +114,3 @@ docs-serve:
 # remove build artifacts (kernel leftovers: run `mnr --clean` instead)
 clean:
     cargo clean
-    rm -f mnexec || true

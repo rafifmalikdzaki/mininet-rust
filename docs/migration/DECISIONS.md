@@ -35,6 +35,19 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   HTB path is a marked TODO.
 - **Revisit:** Implement HTB via netlink when a privileged CI can verify it.
 
+## D26 — all C removed from the tree (`mnexec.c`, `sch_htb.c` deleted)
+- **Decision:** `legacy/mnexec.c` and `legacy/util/sch_htb-ofbuf/` are
+  deleted; the legacy `Makefile` no longer has an `mnexec` target. The
+  `mnexec` binary the Python reference side pathCheck()s at runtime is now
+  the Rust `apps/mnexec` (`cargo build --release -p mnexec`), installed on
+  PATH by CI (rust-root-tests.yaml) and scripts/bench_scenarios.sh.
+  container/Dockerfile no longer COPYs/compiles any C; CI apt lists no
+  longer install gcc/make/libc6-dev.
+- **Why:** the project is pure Rust + frozen Python reference; zero C
+  sources, zero C toolchain in any build path.
+- **Note:** historical mentions of `mnexec.c` in ARCHITECTURE.md/PROGRESS.md
+  describe the upstream tree at migration time and are left as-is.
+
 ## D4 — `mnexec.c` replaced by Rust `apps/mnexec`
 - **Decision:** 1:1 flag port (`-c -d -n -p -a -g -r -v -h`) using the `nix` crate;
   usage string byte-identical to the C original (verified by diff against a

@@ -1,7 +1,7 @@
 [package]
 name = "mnexec"
 version = "0.1.0"
-description = "Rust port of mnexec.c: execution utility for mininet (fd closing, setsid, net/mount namespaces, cgroup, RT sched, execvp)"
+description = "Rust port of the original mnexec helper: execution utility for mininet (fd closing, setsid, net/mount namespaces, cgroup, RT sched, execvp)"
 edition.workspace = true
 license.workspace = true
 

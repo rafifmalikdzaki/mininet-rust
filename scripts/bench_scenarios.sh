@@ -41,10 +41,10 @@ if [ -z "$MN_BIN" ]; then
     MN_BIN=$REPO_ROOT/target/release/mnr
 fi
 
-# Python side needs its C helper (Makefile + mnexec.c live in legacy/)
-if [ ! -x "$REPO_ROOT/legacy/mnexec" ]; then
-    make -C legacy mnexec PYTHON=python3 >&2
-    install -m 0755 legacy/mnexec /usr/local/bin/mnexec 2>/dev/null || true
+# Python side pathCheck()s 'mnexec' at Host setup; the Rust port provides the
+# binary (apps/mnexec) — the workspace release build above already made it.
+if ! command -v mnexec >/dev/null 2>&1; then
+    install -m 0755 "$REPO_ROOT/target/release/mnexec" /usr/local/bin/mnexec 2>/dev/null || true
 fi
 
 PY_MN="python3 $REPO_ROOT/legacy/bin/mn"

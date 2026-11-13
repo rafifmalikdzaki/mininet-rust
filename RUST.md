@@ -1,10 +1,11 @@
-# RUST.md — the Rust port of Mininet (branch `rust-migration`)
+# RUST.md — the Rust port of Mininet
 
 This repo carries a Rust re-implementation of Python Mininet 2.3.1b4 next to
-the original Python tree. The Python code under `mininet/`, `bin/mn`, and
-`mnexec.c` is **untouched** and serves as the differential-testing reference;
-the Rust code lives in a Cargo workspace (`crates/`, `apps/`) and is built
-into a single `mn` binary plus an `mnexec` helper.
+the original Python tree, now grouped under `legacy/`. The Python code in
+`legacy/mininet/` and `legacy/bin/mn` is **untouched** and serves as the
+differential-testing reference; the old C `mnexec.c` helper is deleted —
+`mnexec` is a pure-Rust binary now. The Rust code lives in a Cargo workspace
+(`crates/`, `apps/`) and is built into `mnr`, `mnr-tui`, `mnr-mcp`, `mnexec`.
 
 Migration plan and task list: `tasks/plan.md`. Deep dives:
 `docs/migration/ARCHITECTURE.md` (component inventory + dependency graph),
@@ -52,7 +53,7 @@ dependent to dependency):
 
 ```
 apps/mn        (mn)        bin/mn CLI + cli.py REPL        <- mn-net, mn-topo, mn-util, clap
-apps/mnexec    (mnexec)    mnexec.c replacement           <- nix, libc
+apps/mnexec    (mnexec)    netns-attach helper (Rust)     <- nix, libc
 crates/net     (mn-net)    mininet/net.py orchestrator    <- mn-node, mn-link, mn-netlink, mn-topo, mn-util
 crates/node    (mn-node)   mininet/node.py + nodelib      <- mn-link, mn-netlink, mn-topo, mn-util, nix
 crates/link    (mn-link)   mininet/link.py (Intf/Link/TCLink) <- mn-netlink, mn-util, rtnetlink

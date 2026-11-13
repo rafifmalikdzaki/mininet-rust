@@ -14,7 +14,11 @@ import sys
 
 # Make the repo's mininet package importable regardless of cwd.
 sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    0,
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "legacy",
+    ),
 )
 
 from mininet import util  # noqa: E402

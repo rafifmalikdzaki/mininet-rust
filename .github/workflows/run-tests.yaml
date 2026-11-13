@@ -43,9 +43,9 @@ jobs:
           sudo apt-get install -qq vlan tshark openvswitch-testcontroller
           export PYTHON=${{ matrix.py }}
           sudo $PYTHON -m pip install pexpect
-          # NB: no `util/install.sh -fw` here — the -f (OpenFlow reference
-          # switch) path patches mininet/util/openflow-patches/controller.patch,
-          # which does not exist in this tree (nor upstream anymore). The tests
+          # NB: no `legacy/util/install.sh -fw` here — the -f (OpenFlow
+          # reference switch) path patched util/openflow-patches/, whose C
+          # patches were removed from this tree. The tests
           # only need a `controller` executable on PATH; shim it with OVS's
           # ovs-testcontroller (mininet runs `controller [-v] ptcp:6653`).
           if ! which controller >/dev/null 2>&1; then
@@ -64,7 +64,7 @@ jobs:
           export PYTHON=${{ matrix.py }}
           # Three walkthrough tests need the OpenFlow reference userspace
           # switch (ofdatapath) or live OF hello traffic on lo; upstream can
-          # no longer install it (mininet/mininet removed openflow-patches),
+          # no longer install it (the C patch files were removed from this tree),
           # so exclude exactly those three here (see docs/migration/DECISIONS.md D22).
           $sudo $PYTHON - <<'EOF'
           import sys, unittest

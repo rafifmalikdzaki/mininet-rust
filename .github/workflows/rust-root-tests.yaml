@@ -40,7 +40,7 @@ jobs:
       # Python reference side needs: python3 + python3-packaging (mininet
       # util.py prefers packaging.version; 24.04's python3.12 has no
       # distutils), ip (iproute2), ifconfig (net-tools), mnexec (built below
-      # from mnexec.c), ovs-vsctl (openvswitch-switch, default switch class
+      # from the Rust apps/mnexec), ovs-vsctl (openvswitch-switch, default class
       # OVSSwitch), brctl (bridge-utils), ethtool (link status), iptables
       # (NAT tests). Rust side needs cargo only (plus iptables for the NAT
       # root test).
@@ -51,7 +51,7 @@ jobs:
             ca-certificates curl \
             python3 python3-packaging iproute2 net-tools bridge-utils \
             ethtool iptables iputils-ping openvswitch-switch \
-            openvswitch-testcontroller gcc make libc6-dev
+            openvswitch-testcontroller
           python3 --version
 
       # mininet runs `controller [-v] ptcp:6653` for the default controller;
@@ -84,14 +84,12 @@ jobs:
         # rust-toolchain.toml pins channel = "stable"; Cargo.lock is committed.
 
       # Python mininet pathCheck()s 'mnexec' and 'ifconfig' at Host setup;
-      # build the C helper from the repo and put it on PATH. Compiled directly
-      # (not via `make mnexec`) because the Makefile derives -DVERSION from
-      # `bin/mn --version`, which fails on the container's python3.12
-      # (mininet imports distutils, removed in 3.12).
-      - name: Build mnexec and install it on PATH
+      # build the Rust mnexec (apps/mnexec, the port of the old C helper)
+      # and put it on PATH.
+      - name: Build mnexec (Rust) and install it on PATH
         run: |
-          cc -O2 -Wall -DVERSION='"2.3.1b4"' legacy/mnexec.c -o mnexec
-          install -D mnexec /usr/local/bin/mnexec
+          cargo build --release -p mnexec
+          install -D target/release/mnexec /usr/local/bin/mnexec
           which mnexec && mnexec 2>&1 | head -n 1 || true
 
       # No systemd inside the container: create the OVS db by hand (the deb

@@ -29,8 +29,11 @@ import sys
 # Repo root is four levels up: crates/net/tests/py_driver_plan.py -> repo root.
 sys.path.insert(
     0,
-    os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    os.path.join(
+        os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        ),
+        "legacy",
     ),
 )
 

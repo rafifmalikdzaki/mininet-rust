@@ -52,7 +52,7 @@ live run with real pids/status.)*
 | `mnr`          | the CLI: `--topo <spec> [--switch <kind>] [--controller none] [--test pingall] [--dump]` |
 | `mnr-tui`      | graph TUI — nodes as boxes, edges by live status; `--frames N` for headless CI renders, `--json` export |
 | `mnr-mcp`      | [MCP](https://modelcontextprotocol.io) stdio server: `topo_plan`, `graph`, `net_start/stop`, `pingall`, `host_cmd`, … |
-| `mnexec`       | the C mnexec helper (netns attach), built from source like upstream |
+| `mnexec`       | netns-attach helper, ported to Rust (`apps/mnexec`) — no C anywhere |
 
 ```console
 $ mnr --topo single,3 --test pingall

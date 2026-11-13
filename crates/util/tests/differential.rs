@@ -976,7 +976,7 @@ fn differential_against_python_util() {
     let mut child = Command::new("python3")
         .arg(&driver)
         .current_dir(&repo_root)
-        .env("PYTHONPATH", &repo_root)
+        .env("PYTHONPATH", repo_root.join("legacy"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
