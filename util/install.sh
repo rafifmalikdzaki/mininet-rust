@@ -10,7 +10,11 @@ set -e
 set -o nounset
 
 # Get directory containing mininet folder
-MININET_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd -P )"
+# Repo root = parent of util/, regardless of the checkout directory's name.
+# (Upstream's /../.. only worked because the repo dir is conventionally
+# named "mininet"; on a fork checked out as e.g. "mininet-rust" that path
+# does not exist and `pushd $MININET_DIR/mininet` fails.)
+MININET_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd -P )"
 
 # Set up build directory, which by default is the working directory
 #  unless the working directory is a subdirectory of mininet,
@@ -187,6 +191,11 @@ function mn_deps {
                 pf=pyflakes3
                 pep8=python3-pep8
         fi
+        # Ubuntu 24.04 dropped the legacy 'pep8' apt package entirely
+        # (renamed pycodestyle); code-check installs pep8 via pip there.
+        if [ "$DIST" = "Ubuntu" -a `expr $RELEASE '>=' 24.04` = "1" ]; then
+                pep8=python3-pycodestyle
+        fi
 
         $install gcc make socat psmisc xterm ssh iperf telnet \
                  ethtool help2man $pf pylint $pep8 \
@@ -210,7 +219,10 @@ function mn_deps {
     fi
 
     echo "Installing Mininet core"
-    pushd $MININET_DIR/mininet
+    # MININET_DIR is the repo root (see above); the root Makefile owns the
+    # 'install' target. (Upstream's $MININET_DIR/mininet only worked because
+    # the checkout dir is conventionally named "mininet".)
+    pushd $MININET_DIR
     sudo PYTHON=${PYTHON} make install
     popd
 }

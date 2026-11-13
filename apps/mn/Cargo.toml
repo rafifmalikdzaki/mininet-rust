@@ -1,0 +1,16 @@
+[package]
+name = "mnr"
+version = "0.1.0"
+description = "Rust port of the Mininet CLI (Python bin/mn), installed as `mnr` to avoid clashing with an installed Python mininet `mn`"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mnr"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+mn-util = { path = "../../crates/util" }
+mn-topo = { path = "../../crates/topo" }
+mn-net = { path = "../../crates/net" }

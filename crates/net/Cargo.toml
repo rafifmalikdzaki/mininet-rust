@@ -1,0 +1,13 @@
+[package]
+name = "mn-net"
+version = "0.1.0"
+description = "Mininet orchestrator ported from mininet/net.py (Mininet: addHost/addSwitch/addController/addLink, buildFromTopo, start/stop, dump/links/pingAll, dry-run plan mode) on top of mn-topo/mn-node/mn-link/mn-netlink/mn-util"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-util = { path = "../util" }
+mn-topo = { path = "../topo" }
+mn-netlink = { path = "../netlink" }
+mn-link = { path = "../link" }
+mn-node = { path = "../node" }

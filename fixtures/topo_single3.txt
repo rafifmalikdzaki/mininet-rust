@@ -1,0 +1,17 @@
+buildTopo arg: single,3
+topo class: SingleSwitchTopo
+nodes(): ['h1', 'h2', 'h3', 's1']
+hosts(): ['h1', 'h2', 'h3']
+switches(): ['s1']
+nodeInfo(h1): {}
+nodeInfo(h2): {}
+nodeInfo(h3): {}
+nodeInfo(s1): {'isSwitch': True}
+links(sort=True, withKeys=True, withInfo=True):
+   ('h1', 's1', 1, {'node1': 'h1', 'node2': 's1', 'port1': 0, 'port2': 1})
+   ('h2', 's1', 1, {'node1': 'h2', 'node2': 's1', 'port1': 0, 'port2': 2})
+   ('h3', 's1', 1, {'node1': 'h3', 'node2': 's1', 'port1': 0, 'port2': 3})
+ports: {'h1': {0: ('s1', 1)}, 's1': {1: ('h1', 0), 2: ('h2', 0), 3: ('h3', 0)}, 'h2': {0: ('s1', 2)}, 'h3': {0: ('s1', 3)}}
+port(h1, s1): (0, 1)
+port(h2, s1): (0, 2)
+port(h3, s1): (0, 3)

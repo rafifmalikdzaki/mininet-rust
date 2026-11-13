@@ -1,0 +1,29 @@
+buildTopo arg: linear,4
+topo class: LinearTopo
+nodes(): ['h1', 'h2', 'h3', 'h4', 's1', 's2', 's3', 's4']
+hosts(): ['h1', 'h2', 'h3', 'h4']
+switches(): ['s1', 's2', 's3', 's4']
+nodeInfo(h1): {}
+nodeInfo(h2): {}
+nodeInfo(h3): {}
+nodeInfo(h4): {}
+nodeInfo(s1): {'isSwitch': True}
+nodeInfo(s2): {'isSwitch': True}
+nodeInfo(s3): {'isSwitch': True}
+nodeInfo(s4): {'isSwitch': True}
+links(sort=True, withKeys=True, withInfo=True):
+   ('h1', 's1', 1, {'node1': 'h1', 'node2': 's1', 'port1': 0, 'port2': 1})
+   ('h2', 's2', 1, {'node1': 'h2', 'node2': 's2', 'port1': 0, 'port2': 1})
+   ('h3', 's3', 1, {'node1': 'h3', 'node2': 's3', 'port1': 0, 'port2': 1})
+   ('h4', 's4', 1, {'node1': 'h4', 'node2': 's4', 'port1': 0, 'port2': 1})
+   ('s2', 's1', 1, {'node1': 's2', 'node2': 's1', 'port1': 2, 'port2': 2})
+   ('s3', 's2', 1, {'node1': 's3', 'node2': 's2', 'port1': 2, 'port2': 3})
+   ('s4', 's3', 1, {'node1': 's4', 'node2': 's3', 'port1': 2, 'port2': 3})
+ports: {'h1': {0: ('s1', 1)}, 's1': {1: ('h1', 0), 2: ('s2', 2)}, 'h2': {0: ('s2', 1)}, 's2': {1: ('h2', 0), 2: ('s1', 2), 3: ('s3', 2)}, 'h3': {0: ('s3', 1)}, 's3': {1: ('h3', 0), 2: ('s2', 3), 3: ('s4', 2)}, 'h4': {0: ('s4', 1)}, 's4': {1: ('h4', 0), 2: ('s3', 3)}}
+port(h1, s1): (0, 1)
+port(h2, s2): (0, 1)
+port(h3, s3): (0, 1)
+port(h4, s4): (0, 1)
+port(s2, s1): (2, 2)
+port(s3, s2): (2, 3)
+port(s4, s3): (2, 3)

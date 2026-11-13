@@ -1,0 +1,17 @@
+[package]
+name = "mn-node"
+version = "0.1.0"
+description = "Node/Host model ported from mininet/node.py: namespace-backed nodes, mnexec-based command execution, interface configuration on top of mn-netlink/mn-link/mn-util/mn-topo"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mn-util = { path = "../util" }
+mn-netlink = { path = "../netlink" }
+mn-link = { path = "../link" }
+mn-topo = { path = "../topo" }
+# The LinuxBridge link ops in nodelib.rs go through mn-netlink's
+# re-exports (BridgeNl, bridge_add_msg, link_packet packet types, ...), so
+# there is no direct rtnetlink/netlink-packet-route/tokio/futures dep here.
+nix.workspace = true
+libc.workspace = true

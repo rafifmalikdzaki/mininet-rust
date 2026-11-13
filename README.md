@@ -1,142 +1,132 @@
-Mininet: Rapid Prototyping for Software Defined Networks
-========================================================
-*The best way to emulate almost any network on your laptop!*
+# Mininet: Rapid Prototyping for Software Defined Networks
 
-Mininet 2.3.1b4
+*The best way to emulate almost any network on your laptop.*
 
-[![Build Status][1]](https://github.com/mininet/mininet/actions)
+[![Python tests](https://github.com/mininet/mininet/workflows/mininet-tests/badge.svg)](https://github.com/mininet/mininet/actions)
+[![Rust CI](https://github.com/mininet/mininet/actions/workflows/rust-ci.yaml/badge.svg)](https://github.com/mininet/mininet/actions/workflows/rust-ci.yaml)
+[![Rust root tests](https://github.com/mininet/mininet/actions/workflows/rust-root-tests.yaml/badge.svg)](https://github.com/mininet/mininet/actions/workflows/rust-root-tests.yaml)
 
+Mininet 2.3.1b4 — original Python implementation, plus a Rust port on branch
+[`rust-migration`](RUST.md) (installed as **`mnr`** so it never clashes with
+an installed Python `mn`).
 
-### What is Mininet?
+## What is Mininet?
 
-Mininet emulates a complete network of hosts, links, and switches
-on a single machine.  To create a sample two-host, one-switch network,
-just run:
+Mininet emulates a complete network of hosts, links, and switches on a single
+machine:
 
-  `sudo mn`
+```console
+$ sudo mn                 # Python CLI
+$ sudo mnr                # Rust CLI (branch rust-migration)
+```
 
-Mininet is useful for interactive development, testing, and demos,
-especially those using OpenFlow and SDN.  OpenFlow-based network
-controllers prototyped in Mininet can usually be transferred to
-hardware with minimal changes for full line-rate execution.
+Hosts are `bash` processes in their own Linux network namespaces; links are
+veth pairs; switches are software switches (Open vSwitch, or a kernel bridge
+with `--switch lxbr`). OpenFlow controllers prototyped in Mininet transfer to
+hardware with minimal changes.
 
-### How does it work?
+## Quick start
 
-Mininet creates virtual networks using process-based virtualization
-and network namespaces - features that are available in recent Linux
-kernels.  In Mininet, hosts are emulated as `bash` processes running in
-a network namespace, so any code that would normally run on a Linux
-server (like a web server or client program) should run just fine
-within a Mininet "Host".  The Mininet "Host" will have its own private
-network interface and can only see its own processes.  Switches in
-Mininet are software-based switches like Open vSwitch or the OpenFlow
-reference switch.  Links are virtual ethernet pairs, which live in the
-Linux kernel and connect our emulated switches to emulated hosts
-(processes).
+```console
+$ sudo mn --topo single,3                  # 3 hosts, 1 switch
+mininet> nodes
+mininet> pingall
+mininet> exit
+$ sudo mn --topo tree,depth=2,fanout=3     # parametrized tree
+$ sudo mn --topo linear,3 --link tc,bw=10,delay=5ms,loss=0.1
+$ sudo mn -c                               # clean up leftovers
+```
 
-### Features
+The interactive CLI (`mininet>`) supports `nodes`, `links`, `dump`, `pingall`,
+`iperf`, `sh`, `xterm`, `py`, and per-node passthrough (`h1 ifconfig -a`).
 
-Mininet includes:
+## The Rust port (`mnr`) — branch `rust-migration`
 
-* A command-line launcher (`mn`) to instantiate networks.
+A from-scratch Rust re-implementation following
+[containerlab](https://containerlab.dev/)'s core lesson: **talk to the kernel
+via netlink, never shell out to `ip`/`tc`**.
 
-* A handy Python API for creating networks of varying sizes and
-  topologies.
+```console
+$ cargo build --workspace --release
+$ sudo target/release/mnr --topo tree,2,2     # real emulation (needs root)
+$ target/release/mnr --topo single,3 --dump    # dry-run plan, no root needed
+$ target/release/mnr-tui --topo tree,2,2       # OMO-style live graph TUI
+$ target/release/mnr-mcp                        # MCP server for AI agents
+```
 
-* Examples (in the `examples/` directory) to help you get started.
+All common developer commands are in the [`justfile`](justfile):
+`just check` (fmt+clippy), `just test`, `just root-tests-docker` (privileged
+container), `just container-run --topo single,3 --test pingall` (rootless),
+`just docs`, `just bench`; see `just --list`.
 
-* Full API documentation via Python `help()` docstrings, as well as
-  the ability to generate PDF/HTML documentation with `make doc`.
+### No root / no sudo: run `mnr` in a rootless container
 
-* Parametrized topologies (`Topo` subclasses) using the Mininet
-  object.  For example, a tree network may be created with the
-  command:
+mininet is netns-based, so containers are the natural virtualization — no VMs,
+no host root. `container/Dockerfile` + `scripts/mnr-container.sh` run `mnr`
+inside a **rootless** podman/docker container (the container's root is mapped
+into a user namespace via subuid; `--privileged` grants `CAP_NET_ADMIN` only
+*inside that namespace*):
 
-  `mn --topo tree,depth=2,fanout=3`
+```console
+$ sh scripts/mnr-container.sh --topo single,3 --test pingall   # builds image on first run
+$ sh scripts/mnr-container.sh --topo tree,2,2                 # interactive REPL
+$ sh scripts/mnr-container.sh --build                         # rebuild the image
+```
 
-* A command-line interface (`CLI` class) which provides useful
-  diagnostic commands (like `iperf` and `ping`), as well as the
-  ability to run a command to a node. For example,
+Requirements (one-time, no root): podman with `uidmap` + your user in
+`/etc/subuid`/`/etc/subgid` (most distros ship this), or rootless Docker
+(`dockerd-rootless-setuptool.sh install`). Unless you pass `--switch`
+yourself the wrapper adds `--switch lxbr` (kernel LinuxBridge — rootless
+containers usually cannot load the OVS kernel module on the host). The current
+directory is mounted at `/w`, so dumps/topo files land back on your host. CI
+smoke-tests this path in `.github/workflows/container.yaml`.
 
-  `mininet> h11 ifconfig -a`
+Highlights:
 
-  tells host h11 to run the command `ifconfig -a`
+- **Byte-exact parity, proven by differential tests** — the Rust suites drive
+  the original Python code and assert identical outputs (5 536 util cases,
+  52 topo cases, 11 net-plan specs, golden CLI sessions); root-gated suites
+  diff `mnr --dump` against Python `mn` on a complexity ladder.
+- **`mnr-tui`** — live topology graph TUI (OMO-style: nodes as boxes, edges by
+  link status, pan/zoom/select), headless `--frames`/`--json` for CI.
+- **`mnr-mcp`** — [MCP](https://modelcontextprotocol.io/) server exposing
+  `topo_plan`, `graph`, `net_start/stop`, `pingall`, `host_cmd`, … to any
+  AI tool: `vibe mcp add mnr-mcp --transport stdio --command "$PWD/target/release/mnr-mcp"`.
+- **Python bindings** (`mininet_rust`, PyO3) for easy coding against the Rust core, plus Rust-backed labs in `examples/rust/` (external NAT, cybersec testbed).
+- Full decision log, architecture map, and progress ledger in
+  [`docs/migration/`](docs/migration/PROGRESS.md).
 
-* A "cleanup" command to get rid of junk (interfaces, processes, files
-  in /tmp, etc.) which might be left around by Mininet or Linux. Try
-  this if things stop working!
+See [RUST.md](RUST.md) for build/run details and the ported-component table.
 
-  `mn -c`
+## Installation (Python)
 
-### Python 3 Support
+See [INSTALL](INSTALL). Python 3 and Python 2 are both supported by 2.3.1b4.
 
-- Mininet 2.3.1b4 supports Python 3 and Python 2
+## Documentation
 
-- You can install both the Python 3 and Python 2 versions of
-Mininet side by side, but the most recent installation will
-determine which Python version is used by default by `mn`.
+- **Sphinx docs (this branch):** `pip install -r docs/requirements.txt && make -C docs html`
+  → `docs/_build/html/index.html` (quickstart, Rust guide, TUI, MCP,
+  architecture, testing, migration ledger).
+- **Python API:** `help()` docstrings, or `make doc` (Doxygen).
+- Web walkthrough and FAQ: <http://mininet.org>, <http://faq.mininet.org>.
 
-- You can run `mn` directly with Python 2 or Python 3,
-  as long as the appropriate version of Mininet is installed,
-  e.g.
+## Testing
 
-      $ sudo python2 `which mn`
+```console
+$ cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace   # Rust, any machine
+$ sudo sh scripts/run_root_tests.sh     # root-gated netns tests + differential ladder + benchmarks
+```
 
-- More information regarding Python 3 and Python 2 support
-  may be found in the release notes on http://docs.mininet.org.
+CI: Python tests (`run-tests.yaml`, `code-check.yaml`), Rust gates
+(`rust-ci.yaml`), privileged root/differential/benchmark job
+(`rust-root-tests.yaml`).
 
-### Other Enhancements and Information
+## Support & contributing
 
-- Support for Ubuntu 22.04 LTS (and 20.04)
-
-- More reliable testing and CI via github actions
-
-- Preliminary support for cgroups v2 (and v1)
-
-- Minor bug fixes (2.3.1)
-
-- Additional information about this release and previous releases
-  may be found in the release notes on http://docs.mininet.org.
-
-### Installation
-
-See `INSTALL` for installation instructions and details.
-
-### Documentation
-
-In addition to the API documentation (`make doc`), much useful
-information, including a Mininet walkthrough and an introduction
-to the Python API, is available on the
-[Mininet Web Site](http://mininet.org).
-There is also a wiki which you are encouraged to read and to
-contribute to, particularly the Frequently Asked Questions
-(FAQ) at http://faq.mininet.org.
-
-### Support
-
-Mininet is community-supported. We encourage you to join the
-Mininet mailing list, `mininet-discuss` at:
-
+Community-supported — join `mininet-discuss`:
 <https://mailman.stanford.edu/mailman/listinfo/mininet-discuss>
 
-### Join Us
+Hosted at <https://github.com/mininet>. Bug reports, fixes, and PRs welcome
+(see [CONTRIBUTORS](CONTRIBUTORS)).
 
-Thanks again to all of the Mininet contributors and users!
-
-Mininet is an open source project and is currently hosted
-at <https://github.com/mininet>. You are encouraged to download,
-examine, and modify the code, and to submit bug reports, bug fixes,
-feature requests, new features, and other issues and pull requests.
-Thanks to everyone who has contributed code to the Mininet project
-(see CONTRIBUTORS for more info!) It is because of everyone's
-hard work that Mininet continues to grow and improve.
-
-### Enjoy Mininet
-
-Have fun! We look forward to seeing what you will do with Mininet
-to change the networking world.
-
-Bob Lantz,
-on behalf of the Mininet Contributors
-
-[1]: https://github.com/mininet/mininet/workflows/mininet-tests/badge.svg
+*Bob Lantz, on behalf of the Mininet Contributors*

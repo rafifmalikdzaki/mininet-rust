@@ -1,0 +1,21 @@
+[package]
+name = "mnr-tui-app"
+version = "0.1.0"
+description = "mn-tui binary: OMO-style live graph TUI for the emulated network"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mnr-tui"
+path = "src/main.rs"
+
+[dependencies]
+mnr-tui = { path = "../../crates/tui" }
+mn-net = { path = "../../crates/net" }
+clap = { version = "4", features = ["derive"] }
+ratatui = "0.30"
+crossterm = "0.29"
+
+[dev-dependencies]
+# only the integration tests (tests/cli.rs) parse the --json output
+serde_json = "1"

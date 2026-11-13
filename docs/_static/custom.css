@@ -1,0 +1,5 @@
+/* Small custom touches on top of the furo theme */
+:root {
+  --color-brand-primary: #c2410c;
+  --color-brand-content: #c2410c;
+}

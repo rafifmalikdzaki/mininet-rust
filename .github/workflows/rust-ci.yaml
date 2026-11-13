@@ -1,0 +1,32 @@
+name: rust-ci
+
+on:
+  push:
+    branches: [rust-migration, master]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust workspace checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Lint GitHub workflows (actionlint)
+        run: |
+          curl -sL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz | tar xz -C /tmp actionlint
+          /tmp/actionlint .github/workflows/*.yaml
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Compile
+        run: cargo check --workspace --all-targets
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+      - name: Release build
+        run: cargo build --workspace --release
+      - name: Build Python bindings (maturin)
+        run: |
+          python3 -m pip install maturin
+          maturin build -m bindings/python/Cargo.toml --release
