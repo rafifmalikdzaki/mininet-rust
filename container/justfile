@@ -1,0 +1,31 @@
+# justfile — rootless-container recipes for the mnr image. Run from here or
+# from the repo root (`just -f container/justfile ...`); `just -l` to list.
+
+set shell := ["sh", "-cu"];
+
+image := "mnr-rootless:latest"
+root  := `git rev-parse --show-toplevel`
+
+# default recipe: list available commands
+default:
+    @just --list
+
+# build (or rebuild) the mnr-rootless image from container/Dockerfile
+build:
+    podman build -t {{image}} -f Dockerfile {{root}}
+
+# run mnr in the container (args pass through): just run --topo single,3 --test pingall
+run *args:
+    sh {{root}}/scripts/mnr-container.sh {{args}}
+
+# shell inside the image for debugging
+shell:
+    sh {{root}}/scripts/mnr-container.sh sh
+
+# smoke test: build + single,3 pingall in the container (the container.yaml job)
+smoke: build
+    MNR_IMAGE={{image}} sh {{root}}/scripts/mnr-container.sh --topo single,3 --test pingall
+
+# remove the local image
+clean:
+    podman rmi {{image}} || true

@@ -101,6 +101,21 @@ Gates now: 410 passed / 0 failed / 29 ignored (root-gated).
 - Verified locally with docker: image builds, `--topo single,3 --test pingall`
   -> 0% dropped (6/6), `--topo tree,2,2 --dump` -> plan.
 
+## Rootless containers (D25)
+- `container/Dockerfile` (multi-stage rust builder -> ubuntu:24.04 runtime with
+  mnr/mnexec/mnr-tui/mnr-mcp) + `container/entrypoint.sh` (starts OVS daemons
+  when present) + `scripts/mnr-container.sh` (rootless podman/docker runner;
+  auto `--switch lxbr`; mounts $PWD at /w). No sudo/root on the host — caps are
+  confined to the container user namespace.
+- CI: `.github/workflows/container.yaml` builds the image and runs
+  single,3/linear,4 pingall + tree,2,2 --dump through the wrapper.
+- Verified locally with docker: image builds, `--topo single,3 --test pingall`
+  -> 0% dropped (6/6), `--topo tree,2,2 --dump` -> plan.
+- Justfiles: root `justfile` (build/check/test/root-tests-docker via
+  privileged container/diff/bench/container-*/docs/clean) + `container/justfile`
+  (build/run/shell/smoke/clean); recipes dry-run + live verified (`just test` = 39
+  ok suites, `container-run` pingall 6/6 at 0% loss).
+
 ## Next actions
 1. Merge PR #1 (rust-migration -> master on the fork) — all 5 workflows green.
 2. Post-merge roadmap: docs/migration/ROADMAP.md (HTB bw via netlink, NOX/Ryu

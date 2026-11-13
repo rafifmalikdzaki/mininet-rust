@@ -54,6 +54,11 @@ $ target/release/mnr-tui --topo tree,2,2       # OMO-style live graph TUI
 $ target/release/mnr-mcp                        # MCP server for AI agents
 ```
 
+All common developer commands are in the [`justfile`](justfile):
+`just check` (fmt+clippy), `just test`, `just root-tests-docker` (privileged
+container), `just container-run --topo single,3 --test pingall` (rootless),
+`just docs`, `just bench`; see `just --list`.
+
 ### No root / no sudo: run `mnr` in a rootless container
 
 mininet is netns-based, so containers are the natural virtualization — no VMs,
