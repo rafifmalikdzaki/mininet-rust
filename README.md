@@ -1,132 +1,125 @@
-# Mininet: Rapid Prototyping for Software Defined Networks
+# mininet-rust — `mnr`
 
-*The best way to emulate almost any network on your laptop.*
+[![Rust root tests](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-root-tests.yaml/badge.svg)](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-root-tests.yaml)
+[![rust-ci](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-ci.yaml/badge.svg)](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-ci.yaml)
+[![container-image](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/container.yaml/badge.svg)](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/container.yaml)
 
-[![Python tests](https://github.com/mininet/mininet/workflows/mininet-tests/badge.svg)](https://github.com/mininet/mininet/actions)
-[![Rust CI](https://github.com/mininet/mininet/actions/workflows/rust-ci.yaml/badge.svg)](https://github.com/mininet/mininet/actions/workflows/rust-ci.yaml)
-[![Rust root tests](https://github.com/mininet/mininet/actions/workflows/rust-root-tests.yaml/badge.svg)](https://github.com/mininet/mininet/actions/workflows/rust-root-tests.yaml)
-
-Mininet 2.3.1b4 — original Python implementation, plus a Rust port on branch
-[`rust-migration`](RUST.md) (installed as **`mnr`** so it never clashes with
-an installed Python `mn`).
-
-## What is Mininet?
-
-Mininet emulates a complete network of hosts, links, and switches on a single
-machine:
+A from-scratch **Rust** re-implementation of [Mininet](https://mininet.org) —
+the network emulator — following containerlab's core lesson: **talk netlink,
+never shell out**. One binary, `mnr`, plus an OMO-style graph TUI (`mnr-tui`)
+and an [MCP](https://modelcontextprotocol.io/) server (`mnr-mcp`) so AI agents
+can build and drive networks natively.
 
 ```console
-$ sudo mn                 # Python CLI
-$ sudo mnr                # Rust CLI (branch rust-migration)
+$ target/release/mnr --topo single,3 --test pingall     # build + emulate
+*** Ping: testing ping reachability
+h1 -> h2 h3
+h2 -> h1 h3
+h3 -> h1 h2
+*** Results: 0% dropped (6/6 received)
 ```
 
-Hosts are `bash` processes in their own Linux network namespaces; links are
-veth pairs; switches are software switches (Open vSwitch, or a kernel bridge
-with `--switch lxbr`). OpenFlow controllers prototyped in Mininet transfer to
-hardware with minimal changes.
+---
 
-## Quick start
+## Screenshots
+
+### `mn-tui` — live graph, pan/zoom/select
+
+```text
+ mn-tui — topo tree,2,2 (dry-run plan)
+                                          ┌───────────────────────────────┐
+              ┌───────────────────────────┤            s1                 │
+              │                           │  switch, stp=off prio=32768   │
+              │  k = kind   tab = cycle   └───────┬───────────┬───────────┘
+              │  +/− or </> = zoom              / │ \         │
+        ┌─────┴─────┐                 ┌────────┴┐  ┌───────┴───┐  ┌────┴───────┐
+        │ h1        │             ┌───┤ h2      │  │      h3   │  │ ...
+        │ 10.0.0.1  │             │   │10.0.0.2 │  │10.0.0.3   │
+        └───────────┘             └───┴─────────┘  └───────────┘
+ frame 1/2 (headless, plan mode)
+ q quit | arrows/hjkl pan | +/- or </> zoom | tab cycle | enter detail | r refresh | p pingall
+```
+
+*(exact frames: [`docs/images/tui_single3.txt`](docs/images/tui_single3.txt),
+[`docs/images/tui_tree22.txt`](docs/images/tui_tree22.txt) — rendered by the
+same `render_frame` code the interactive TUI uses; `just container-run` for a
+live run with real pids/status.)*
+
+## What you get
+
+| binary         | what it does |
+|----------------|--------------|
+| `mnr`          | the CLI: `--topo <spec> [--switch <kind>] [--controller none] [--test pingall] [--dump]` |
+| `mnr-tui`      | graph TUI — nodes as boxes, edges by live status; `--frames N` for headless CI renders, `--json` export |
+| `mnr-mcp`      | [MCP](https://modelcontextprotocol.io) stdio server: `topo_plan`, `graph`, `net_start/stop`, `pingall`, `host_cmd`, … |
+| `mnexec`       | the C mnexec helper (netns attach), built from source like upstream |
 
 ```console
-$ sudo mn --topo single,3                  # 3 hosts, 1 switch
-mininet> nodes
-mininet> pingall
-mininet> exit
-$ sudo mn --topo tree,depth=2,fanout=3     # parametrized tree
-$ sudo mn --topo linear,3 --link tc,bw=10,delay=5ms,loss=0.1
-$ sudo mn -c                               # clean up leftovers
+$ mnr --topo single,3 --test pingall
+*** Ping: testing ping reachability
+h1 -> h2 h3 ...
+*** Results: 0% dropped (6/6 received)
+$ mnr --topo single,3 --dump          # plan-only, no root needed
+$ mnr --topo single,3 --switch lxbr   # kernel LinuxBridge instead of OVS
 ```
 
-The interactive CLI (`mininet>`) supports `nodes`, `links`, `dump`, `pingall`,
-`iperf`, `sh`, `xterm`, `py`, and per-node passthrough (`h1 ifconfig -a`).
-
-## The Rust port (`mnr`) — branch `rust-migration`
-
-A from-scratch Rust re-implementation following
-[containerlab](https://containerlab.dev/)'s core lesson: **talk to the kernel
-via netlink, never shell out to `ip`/`tc`**.
+## No root? Run it rootless
 
 ```console
-$ cargo build --workspace --release
-$ sudo target/release/mnr --topo tree,2,2     # real emulation (needs root)
-$ target/release/mnr --topo single,3 --dump    # dry-run plan, no root needed
-$ target/release/mnr-tui --topo tree,2,2       # OMO-style live graph TUI
-$ target/release/mnr-mcp                        # MCP server for AI agents
+$ sh scripts/mnr-container.sh --topo single,3 --test pingall
 ```
 
-All common developer commands are in the [`justfile`](justfile):
-`just check` (fmt+clippy), `just test`, `just root-tests-docker` (privileged
-container), `just container-run --topo single,3 --test pingall` (rootless),
-`just docs`, `just bench`; see `just --list`.
+Rootless podman/docker map the container's root into a user namespace, so
+`--privileged` grants `CAP_NET_ADMIN` **only there** — the host gains nothing.
+Details in [DECISIONS.md D25](docs/migration/DECISIONS.md); CI smoke-tests the
+same path in [`container.yaml`](.github/workflows/container.yaml).
 
-### No root / no sudo: run `mnr` in a rootless container
+## How it compares
 
-mininet is netns-based, so containers are the natural virtualization — no VMs,
-no host root. `container/Dockerfile` + `scripts/mnr-container.sh` run `mnr`
-inside a **rootless** podman/docker container (the container's root is mapped
-into a user namespace via subuid; `--privileged` grants `CAP_NET_ADMIN` only
-*inside that namespace*):
+| | Python mininet | mininet-rust |
+|---|---|---|
+| data path | shell-outs to `ip`/`tc`/`ovs-vsctl` | rtnetlink via `rtnetlink` crate — typed, no parsing |
+| error surface | `Command` exit codes + parse | `Result<T, Error>` end-to-end, no unwrap in library code |
+| dry-run | — | `--dump` renders the exact plan, verified byte-identical to Python |
+| tests | runtime-only | 400+ unit + differential suites; every kernel path exercised in privileged CI |
+| `Tc` qdiscs | `tc` shell-outs | raw netlink `TCA_OPTIONS` blobs, iproute2-compatible |
+
+## Screenshots — CLI surface
+
+```text
+$ mnr --help
+Usage: mnr [OPTIONS]
+
+Options:
+      --topo <SPEC>            single,k | linear,k | tree,d,f | minimal
+      --switch <KIND[,k=v]>    default|ovs|ovsbr|user|ivs|lxbr
+      --controller <SPEC>      none | ref | remote,IP | ovsc ...
+      --test <NAME>            pingall | pingpair | iperf | none | build
+      --dump                   print the plan and exit (no root needed)
+  -h, --help                   Print help
+```
+
+## Docs
+
+- [Ship guide](RUST.md) · [Decision log D1–D25](docs/migration/DECISIONS.md)
+- [Benchmarks](docs/migration/BENCHMARKS.md) (python-vs-rust ladder with results)
+- [Review verdict](docs/migration/REVIEW.md) (five-axis)
+- TUI deep-dive: [docs/tui.rst](docs/tui.rst); MCP: [docs/mcp.rst](docs/mcp.rst)
+
+## Install
 
 ```console
-$ sh scripts/mnr-container.sh --topo single,3 --test pingall   # builds image on first run
-$ sh scripts/mnr-container.sh --topo tree,2,2                 # interactive REPL
-$ sh scripts/mnr-container.sh --build                         # rebuild the image
+$ cargo build --workspace --release    # then use target/release/{mnr,mnr-tui,mnr-mcp,mnexec}
+$ cargo test --workspace               # unit gates (root-gated suites are #[ignore])
 ```
 
-Requirements (one-time, no root): podman with `uidmap` + your user in
-`/etc/subuid`/`/etc/subgid` (most distros ship this), or rootless Docker
-(`dockerd-rootless-setuptool.sh install`). Unless you pass `--switch`
-yourself the wrapper adds `--switch lxbr` (kernel LinuxBridge — rootless
-containers usually cannot load the OVS kernel module on the host). The current
-directory is mounted at `/w`, so dumps/topo files land back on your host. CI
-smoke-tests this path in `.github/workflows/container.yaml`.
-
-Highlights:
-
-- **Byte-exact parity, proven by differential tests** — the Rust suites drive
-  the original Python code and assert identical outputs (5 536 util cases,
-  52 topo cases, 11 net-plan specs, golden CLI sessions); root-gated suites
-  diff `mnr --dump` against Python `mn` on a complexity ladder.
-- **`mnr-tui`** — live topology graph TUI (OMO-style: nodes as boxes, edges by
-  link status, pan/zoom/select), headless `--frames`/`--json` for CI.
-- **`mnr-mcp`** — [MCP](https://modelcontextprotocol.io/) server exposing
-  `topo_plan`, `graph`, `net_start/stop`, `pingall`, `host_cmd`, … to any
-  AI tool: `vibe mcp add mnr-mcp --transport stdio --command "$PWD/target/release/mnr-mcp"`.
-- **Python bindings** (`mininet_rust`, PyO3) for easy coding against the Rust core, plus Rust-backed labs in `examples/rust/` (external NAT, cybersec testbed).
-- Full decision log, architecture map, and progress ledger in
-  [`docs/migration/`](docs/migration/PROGRESS.md).
-
-See [RUST.md](RUST.md) for build/run details and the ported-component table.
-
-## Installation (Python)
-
-See [INSTALL](INSTALL). Python 3 and Python 2 are both supported by 2.3.1b4.
-
-## Documentation
-
-- **Sphinx docs (this branch):** `pip install -r docs/requirements.txt && make -C docs html`
-  → `docs/_build/html/index.html` (quickstart, Rust guide, TUI, MCP,
-  architecture, testing, migration ledger).
-- **Python API:** `help()` docstrings, or `make doc` (Doxygen).
-- Web walkthrough and FAQ: <http://mininet.org>, <http://faq.mininet.org>.
-
-## Testing
+or fully inside a container, no sudo at all:
 
 ```console
-$ cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace   # Rust, any machine
-$ sudo sh scripts/run_root_tests.sh     # root-gated netns tests + differential ladder + benchmarks
+$ just container-build && just container-run --topo single,3 --test pingall
 ```
 
-CI: Python tests (`run-tests.yaml`, `code-check.yaml`), Rust gates
-(`rust-ci.yaml`), privileged root/differential/benchmark job
-(`rust-root-tests.yaml`).
+## Credits & license
 
-## Support & contributing
-
-Community-supported — join `mininet-discuss`:
-<https://mailman.stanford.edu/mailman/listinfo/mininet-discuss>
-
-Hosted at <https://github.com/mininet>. Bug reports, fixes, and PRs welcome
-(see [CONTRIBUTORS](CONTRIBUTORS)).
-
-*Bob Lantz, on behalf of the Mininet Contributors*
+An idea inherited from [mininet/mininet](https://github.com/mininet/mininet)
+(BSD-3); this port is BSD-2-Clause. No affiliation with the upstream project.

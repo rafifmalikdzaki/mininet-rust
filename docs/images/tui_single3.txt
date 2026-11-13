@@ -1,0 +1,31 @@
+=== frame 1 ===
+ mn-tui — topo single,3 (dry-run plan)                                                              
+                                                        ┌──────────────────────────────────────────┐
+                                                        │ h1                                       │
+                                                        │kind:   host                              │
+                                                        │status: planned                           │
+                                                        │ip:     10.0.0.1                          │
+                                                        │pid:    None                              │
+                                                        │repr: <Host h1: h1-eth0:10.0.0.1 pid=None>│
+                                                        │intfs:                                    │
+                                                        │  h1-eth0 10.0.0.1 MISSING                │
+                                                        │ips: 10.0.0.1                             │
+                                                        │                                          │
+                                                        │                                          │
+                            ┌──────────────────┐      ┌─│                                          │
+                            │c0                │      │s│                                          │
+                            │127.0.0.1         │      │-│                                          │
+                            │controller planned│     /│s│                                          │
+                            └──────────────────┘───── └─│                                          │
+                                         /─────        /│                                          │
+                   ┌────────────┐  /─────  ┌────────────│                                          │
+                   │h1          │──        │h2          │                                          │
+                   │10.0.0.1    │          │10.0.0.2    │                                          │
+                   │host planned│          │host planned│                                          │
+                   └────────────┘          └────────────│                                          │
+                                                        │                                          │
+                                                        │                                          │
+                                                        │                                          │
+                                                        └──────────────────────────────────────────┘
+ frame 1/1 (headless, plan mode)                                                                    
+ q quit | arrows/hjkl pan | +/- or </> zoom | tab cycle | enter detail | r refresh | p pingall      
