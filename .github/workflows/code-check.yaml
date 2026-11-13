@@ -23,4 +23,4 @@ jobs:
         run: |
           python -m pip install pylint==2.15.7 pyflakes==3.2.0 pep8==1.7.1
       - name: Run code check
-        run: make codecheck
+        run: make -C legacy codecheck

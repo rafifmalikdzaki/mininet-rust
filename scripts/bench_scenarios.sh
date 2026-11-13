@@ -41,13 +41,13 @@ if [ -z "$MN_BIN" ]; then
     MN_BIN=$REPO_ROOT/target/release/mnr
 fi
 
-# Python side needs its C helper
-if [ ! -x "$REPO_ROOT/mnexec" ]; then
-    make mnexec PYTHON=python3 >&2
-    cp mnexec /usr/local/bin/mnexec 2>/dev/null || true
+# Python side needs its C helper (Makefile + mnexec.c live in legacy/)
+if [ ! -x "$REPO_ROOT/legacy/mnexec" ]; then
+    make -C legacy mnexec PYTHON=python3 >&2
+    install -m 0755 legacy/mnexec /usr/local/bin/mnexec 2>/dev/null || true
 fi
 
-PY_MN="python3 $REPO_ROOT/bin/mn"
+PY_MN="python3 $REPO_ROOT/legacy/bin/mn"
 
 # --- helpers ---------------------------------------------------------------
 

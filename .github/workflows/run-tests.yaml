@@ -26,7 +26,7 @@ jobs:
           sudo apt-get update -qq
           # This seems too slow unfortunately:
           # sudo apt-get upgrade -y -qq
-          PYTHON=${{ matrix.py }} util/install.sh -nv
+          PYTHON=${{ matrix.py }} legacy/util/install.sh -nv
       - name: Disable slow udevd
         run: sudo systemctl stop systemd-udevd
              systemd-udevd-kernel.socket
@@ -70,7 +70,7 @@ jobs:
           import sys, unittest
           sys.path.insert(0, '.')
           SKIP = {'testWireshark', 'testSwitches', 'testOwnNamespace'}
-          suite = unittest.defaultTestLoader.discover('mininet/test')
+          suite = unittest.defaultTestLoader.discover('legacy/mininet/test')
           def filt(s):
               out = unittest.TestSuite()
               for t in s:
@@ -96,7 +96,7 @@ jobs:
           sys.argv.append('-quick')
           SKIP_MODULES = {'test_baresshd', 'test_clusterSanity', 'test_hwintf', 'test_sshd',
                           'test_controlnet', 'test_mobility', 'test_scratchnet'}
-          suite = unittest.defaultTestLoader.discover('examples/test')
+          suite = unittest.defaultTestLoader.discover('legacy/examples/test')
           def filt(s):
               out = unittest.TestSuite()
               for t in s:

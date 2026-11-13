@@ -30,7 +30,7 @@ jobs:
       # (mininet/*.py, untouched) via an embedded python3 driver; the harness
       # sets PYTHONPATH itself, but export it here too so the Python modules
       # resolve from the repo root (checkout dir = GITHUB_WORKSPACE).
-      PYTHONPATH: .
+      PYTHONPATH: .:legacy
     steps:
       - uses: actions/checkout@v4
 
@@ -90,7 +90,7 @@ jobs:
       # (mininet imports distutils, removed in 3.12).
       - name: Build mnexec and install it on PATH
         run: |
-          cc -O2 -Wall -DVERSION='"2.3.1b4"' mnexec.c -o mnexec
+          cc -O2 -Wall -DVERSION='"2.3.1b4"' legacy/mnexec.c -o mnexec
           install -D mnexec /usr/local/bin/mnexec
           which mnexec && mnexec 2>&1 | head -n 1 || true
 

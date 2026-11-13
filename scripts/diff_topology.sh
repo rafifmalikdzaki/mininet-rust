@@ -5,7 +5,7 @@
 # implementations and diffs normalized topology dumps:
 #
 #   Python (reference): an embedded driver that mirrors
-#       python3 bin/mn --topo <spec> --controller none --test none
+#       python3 legacy/bin/mn --topo <spec> --controller none --test none
 #       (buildTopo, Mininet, net.start(), dump, links, pingall, stop),
 #       capturing stdout.
 #   Rust (port, binary mnr):        <mn binary> --topo <spec> ... --dump
@@ -137,7 +137,7 @@ cat >"$WORK/py_dump.py" <<'PY'
 """Python reference-side dump driver for scripts/diff_topology.sh.
 
 Equivalent to running:
-    python3 bin/mn --topo <spec> --controller none --test none
+    python3 legacy/bin/mn --topo <spec> --controller none --test none
 but instead of entering the interactive CLI it prints four fixed sections on
 stdout (mininet's output() logger redirected to stdout, level 'output'):
 
@@ -228,7 +228,7 @@ if __name__ == '__main__':
     main()
 PY
 
-if ! PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" \
+if ! PYTHONPATH="$REPO_ROOT/legacy${PYTHONPATH:+:$PYTHONPATH}" \
         python3 "$WORK/py_dump.py" "$SPEC" >"$PY_RAW" 2>"$PY_ERR"; then
     echo "diff_topology: ERROR: Python reference side failed; last stderr lines:" >&2
     tail -n 30 "$PY_ERR" >&2
