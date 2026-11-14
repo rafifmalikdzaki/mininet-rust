@@ -22,7 +22,7 @@ Tools
    * - ``graph``
      - live graph with node/link status (needs a built net)
    * - ``net_build``
-     - build a net from a spec (dry-run model, no root)
+     - build a built-in spec or custom graph (dry-run model, no root)
    * - ``net_start``
      - start it for real — **requires root**
    * - ``net_stop``
@@ -35,6 +35,17 @@ Tools
      - run a command on a host — **requires root**
    * - ``net_release``
      - release the session net
+
+For an arbitrary topology, call ``net_build`` with exactly one of ``spec`` or
+``topology``. This example builds two hosts and a switch:
+
+.. code-block:: json
+
+   {"topology":{"hosts":["h1","h2"],"switches":["s1"],"links":[["h1","s1"],["h2","s1"]]},"opts":{"controller":"none","switch":"lxbr"}}
+
+Names begin with a letter and contain at most seven ASCII letters, digits or
+underscores; ``c0`` is reserved. The graph is bounded to 256 nodes and 1024
+links. Check the returned plan before starting it.
 
 Security model: stdio transport only; the client is the local user who spawned
 the server. ``net_start``/``net_stop``/``host_cmd`` hard-fail unless euid 0.

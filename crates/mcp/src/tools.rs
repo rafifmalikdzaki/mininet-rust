@@ -102,13 +102,39 @@ fn graph(s: &mut Session, _args: &Value) -> Result<Value, String> {
 }
 
 fn net_build(s: &mut Session, args: &Value) -> Result<Value, String> {
-    let spec = str_arg(args, "spec")?;
+    let choice = match (args.get("spec"), args.get("topology")) {
+        (Some(Value::String(spec)), None) => Ok((Some(spec.as_str()), None)),
+        (None, Some(topology)) => Ok((None, Some(topology))),
+        (Some(_), None) => Err("'spec' must be a string"),
+        _ => Err("provide exactly one of 'spec' or 'topology'"),
+    }?;
     let opts = match args.get("opts") {
         None | Some(Value::Null) => json!({}),
         Some(o) if o.is_object() => o.clone(),
         Some(_) => return Err("'opts' must be an object".to_string()),
     };
-    let g = s.build(spec, &opts)?;
+    if let Some(key) = opts.as_object().and_then(|o| {
+        o.keys().find(|k| {
+            !matches!(
+                k.as_str(),
+                "link" | "switch" | "controller" | "ipBase" | "autoSetMacs" | "autoStaticArp"
+            )
+        })
+    }) {
+        return Err(format!("unknown opts field {key:?}"));
+    }
+    let g = if let Some(spec) = choice.0 {
+        s.build(spec, &opts)?
+    } else {
+        let object = args.as_object().ok_or("arguments must be an object")?;
+        if let Some(key) = object
+            .keys()
+            .find(|k| !matches!(k.as_str(), "topology" | "opts"))
+        {
+            return Err(format!("unknown net_build argument {key:?}"));
+        }
+        s.build_custom(choice.1.expect("topology selected"), &opts)?
+    };
     Ok(text_result(pretty(&g)?))
 }
 
@@ -248,11 +274,26 @@ pub fn registry() -> Vec<Tool> {
         },
         Tool {
             name: "net_build",
-            description: "Build a network from a built-in topo spec into the session as a dry-run model (non-root safe) and return its graph JSON",
+            description: "Build a built-in spec or a custom topology of named hosts, switches and links as a dry-run model; return its graph. Supply exactly one of spec or topology.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
                     "spec": {"type": "string", "description": "built-in topo spec, e.g. \"single,3\""},
+                    "topology": {
+                        "type": "object",
+                        "description": "Custom graph; links are pairs of existing node names. Parallel links are allowed; self-links are not. At most 256 nodes and 1024 links.",
+                        "properties": {
+                            "hosts": {"type": "array", "maxItems": 256, "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,6}$", "not": {"const": "c0"}}, "description": "Unique host names; c0 is reserved"},
+                            "switches": {"type": "array", "maxItems": 256, "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,6}$", "not": {"const": "c0"}}, "description": "Unique switch names, distinct from hosts"},
+                            "links": {
+                                "type": "array", "maxItems": 1024,
+                                "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string"}},
+                                "description": "Endpoint pairs, e.g. [[\"h1\", \"s1\"], [\"s1\", \"s2\"]]"
+                            }
+                        },
+                        "required": ["hosts", "switches", "links"],
+                        "additionalProperties": false
+                    },
                     "opts": {
                         "type": "object",
                         "properties": {
@@ -266,7 +307,7 @@ pub fn registry() -> Vec<Tool> {
                         "additionalProperties": false
                     }
                 },
-                "required": ["spec"],
+                "oneOf": [{"required": ["spec"]}, {"required": ["topology"]}],
                 "additionalProperties": false
             }),
             handler: net_build,

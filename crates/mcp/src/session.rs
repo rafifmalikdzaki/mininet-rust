@@ -5,7 +5,9 @@
 //! `ping*`/`host_cmd` touch the kernel and are root-gated by the tools.
 
 use mn_net::{ControllerKind, Mininet, MininetOptions};
+use mn_topo::{Attrs, Topo};
 use serde_json::{json, Value};
+use std::collections::HashSet;
 
 use crate::graph::net_graph;
 
@@ -57,6 +59,27 @@ impl Session {
         Ok(graph)
     }
 
+    /// Build a caller-supplied graph, preserving the old network on failure.
+    pub fn build_custom(&mut self, topology: &Value, opts: &Value) -> Result<Value, String> {
+        if self.net.is_some() && self.started {
+            return Err(
+                "a network is running; call net_stop and net_release before rebuilding".to_string(),
+            );
+        }
+        let topo = custom_topology(topology)?;
+        let mut options = parse_options(opts)?;
+        options.topo = Some(topo);
+        options.topo_spec = Some("custom".to_string());
+        options.topo_class = Some("Topo".to_string());
+        options.build = true;
+        let net = Mininet::new(options).map_err(|e| e.to_string())?;
+        let graph = net_graph(&net, false);
+        self.net = Some(net);
+        self.started = false;
+        self.spec = Some("custom".to_string());
+        Ok(graph)
+    }
+
     /// `net_release`: drop the net from the session (best-effort `stop()`
     /// first when it was started on a root host).
     pub fn release(&mut self) -> Result<Value, String> {
@@ -80,6 +103,10 @@ impl Session {
 /// `ipBase`, `autoSetMacs`, `autoStaticArp` — the `bin/mn` knobs that are
 /// runtime strings/bools in mn-net).
 pub fn build_net(spec: &str, opts: &Value) -> Result<Mininet, String> {
+    Mininet::dry_run(spec, parse_options(opts)?).map_err(|e| e.to_string())
+}
+
+fn parse_options(opts: &Value) -> Result<MininetOptions, String> {
     let mut mo = MininetOptions {
         controller: Some(ControllerKind::Default),
         ..Default::default()
@@ -120,7 +147,88 @@ pub fn build_net(spec: &str, opts: &Value) -> Result<Mininet, String> {
             }
         };
     }
-    Mininet::dry_run(spec, mo).map_err(|e| e.to_string())
+    Ok(mo)
+}
+
+/// Parse a bounded, shell-safe graph before passing any names to Mininet.
+fn custom_topology(value: &Value) -> Result<Topo, String> {
+    let object = value.as_object().ok_or("topology must be an object")?;
+    if let Some(key) = object
+        .keys()
+        .find(|k| !matches!(k.as_str(), "hosts" | "switches" | "links"))
+    {
+        return Err(format!("unknown topology field {key:?}"));
+    }
+    let array = |key: &str| -> Result<&Vec<Value>, String> {
+        object
+            .get(key)
+            .and_then(Value::as_array)
+            .ok_or_else(|| format!("topology.{key} must be an array"))
+    };
+    let hosts = array("hosts")?;
+    let switches = array("switches")?;
+    let links = array("links")?;
+    if hosts.len() + switches.len() == 0 || hosts.len() + switches.len() > 256 {
+        return Err("topology must contain 1 to 256 nodes".to_string());
+    }
+    if links.len() > 1024 {
+        return Err("topology.links may contain at most 1024 links".to_string());
+    }
+    let mut names = HashSet::new();
+    let mut topo = Topo::new();
+    let mut switch_id = 0_u64;
+    for (nodes, is_switch) in [(hosts, false), (switches, true)] {
+        for value in nodes {
+            let name = value
+                .as_str()
+                .ok_or("topology node names must be strings")?;
+            let bytes = name.as_bytes();
+            if bytes.is_empty()
+                || bytes.len() > 7
+                || !bytes[0].is_ascii_alphabetic()
+                || !bytes
+                    .iter()
+                    .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+                || name == "c0"
+            {
+                return Err(format!("invalid node name {name:?}: use 1-7 ASCII letters, digits or underscores, starting with a letter; c0 is reserved"));
+            }
+            if !names.insert(name) {
+                return Err(format!("duplicate topology node {name:?}"));
+            }
+            if is_switch {
+                switch_id += 1;
+                let mut attrs = Attrs::new();
+                attrs.insert("dpid", mn_topo::Value::Str(format!("{switch_id:016x}")));
+                topo.add_switch(name, attrs);
+            } else {
+                topo.add_host(name, Attrs::new());
+            }
+        }
+    }
+    for (index, link) in links.iter().enumerate() {
+        let endpoints = link.as_array().filter(|a| a.len() == 2).ok_or_else(|| {
+            format!("topology.links[{index}] must be a two-element array of node names")
+        })?;
+        let a = endpoints[0]
+            .as_str()
+            .ok_or_else(|| format!("topology.links[{index}][0] must be a string"))?;
+        let b = endpoints[1]
+            .as_str()
+            .ok_or_else(|| format!("topology.links[{index}][1] must be a string"))?;
+        if !names.contains(a) || !names.contains(b) {
+            return Err(format!(
+                "topology.links[{index}] references an unknown node"
+            ));
+        }
+        if a == b {
+            return Err(format!(
+                "topology.links[{index}] cannot link a node to itself"
+            ));
+        }
+        topo.add_link(a, b, None, None, None, Attrs::new());
+    }
+    Ok(topo)
 }
 
 #[cfg(test)]

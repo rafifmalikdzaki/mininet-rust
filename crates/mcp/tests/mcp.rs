@@ -332,6 +332,127 @@ fn session_state_across_calls_build_graph_release() {
 }
 
 #[test]
+fn custom_graph_builds_and_remains_in_session() {
+    let mut server = Server::new();
+    let input = [
+        call(
+            1,
+            "net_build",
+            json!({
+                "topology": {
+                    "hosts": ["client", "server"],
+                    "switches": ["edge", "core"],
+                    "links": [["client", "edge"], ["edge", "core"], ["core", "server"]]
+                },
+                "opts": {"controller": "none", "ipBase": "10.42.0.0/16"}
+            }),
+        ),
+        call(2, "graph", json!({})),
+        call(3, "net_release", json!({})),
+    ]
+    .concat();
+    let (msgs, _) = drive(&mut server, &input);
+    for msg in &msgs {
+        assert_ne!(msg["result"]["isError"], true, "{msg}");
+    }
+    let built: Value = serde_json::from_str(&text_of(&msgs[0])).unwrap();
+    let graph: Value = serde_json::from_str(&text_of(&msgs[1])).unwrap();
+    assert_eq!(built, graph);
+    assert_eq!(built["running"], false);
+    assert_eq!(built["nodes"].as_array().unwrap().len(), 4);
+    assert_eq!(built["edges"].as_array().unwrap().len(), 3);
+    assert!(built["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|n| n["id"] == "client" && n["kind"] == "host" && n["ip"] == "10.42.0.1"));
+    assert_eq!(msgs[2]["result"]["isError"], Value::Null);
+}
+
+#[test]
+fn invalid_custom_graphs_do_not_replace_existing_network() {
+    let mut server = Server::new();
+    let mut input = call(
+        1,
+        "net_build",
+        json!({"spec": "single,2", "opts": {"controller": "none"}}),
+    );
+    let cases = [
+        json!({"topology": {"hosts": ["a", "a"], "switches": [], "links": []}}),
+        json!({"topology": {"hosts": ["a"], "switches": ["a"], "links": []}}),
+        json!({"topology": {"hosts": ["a;id"], "switches": [], "links": []}}),
+        json!({"topology": {"hosts": ["c0"], "switches": [], "links": []}}),
+        json!({"topology": {"hosts": ["a"], "switches": [], "links": [["a", "missing"]]}}),
+        json!({"topology": {"hosts": ["a"], "switches": [], "links": [["a", "a"]]}}),
+        json!({"topology": {"hosts": ["a"], "switches": [], "links": [["a"]]}}),
+        json!({"topology": {"hosts": ["a"], "switches": [], "links": [], "extra": true}}),
+        json!({"topology": {"hosts": [], "switches": [], "links": []}}),
+        json!({"topology": {"hosts": ["toolongname"], "switches": [], "links": []}}),
+        json!({"topology": {"hosts": [42], "switches": [], "links": []}}),
+        json!({"topology": {"hosts": ["a"], "switches": [], "links": []}, "opts": {"typo": true}}),
+        json!({"topology": {"hosts": ["a"], "switches": [], "links": []}, "extra": true}),
+        json!({"spec": "minimal", "topology": {"hosts": [], "switches": [], "links": []}}),
+        json!({}),
+    ];
+    for (i, args) in cases.into_iter().enumerate() {
+        input.push_str(&call(i as i64 + 2, "net_build", args));
+    }
+    input.push_str(&call(20, "graph", json!({})));
+    let (msgs, _) = drive(&mut server, &input);
+    for msg in &msgs[1..msgs.len() - 1] {
+        assert_eq!(msg["result"]["isError"], true, "{msg}");
+        assert!(!text_of(msg).is_empty());
+    }
+    let graph: Value = serde_json::from_str(&text_of(msgs.last().unwrap())).unwrap();
+    assert_eq!(graph["spec"], "single,2");
+}
+
+#[test]
+fn net_build_rejects_unknown_opts_for_specs_and_graphs() {
+    let mut server = Server::new();
+    let input = [
+        call(
+            1,
+            "net_build",
+            json!({"spec": "single,2", "opts": {"controller": "none", "typo": true}}),
+        ),
+        call(
+            2,
+            "net_build",
+            json!({
+                "topology": {"hosts": ["h1"], "switches": [], "links": []},
+                "opts": {"typo": true}
+            }),
+        ),
+    ]
+    .concat();
+    let (msgs, _) = drive(&mut server, &input);
+    for msg in &msgs {
+        assert_eq!(msg["result"]["isError"], true, "{msg}");
+        assert!(text_of(msg).contains("unknown opts field"), "{msg}");
+    }
+}
+
+#[test]
+fn net_build_schema_describes_custom_graph_and_exclusive_choice() {
+    let tools = registry();
+    let schema = &tools
+        .iter()
+        .find(|t| t.name == "net_build")
+        .unwrap()
+        .input_schema;
+    assert_eq!(
+        schema["properties"]["topology"]["properties"]["hosts"]["type"],
+        "array"
+    );
+    assert_eq!(
+        schema["properties"]["topology"]["properties"]["links"]["items"]["minItems"],
+        2
+    );
+    assert!(schema["oneOf"].as_array().is_some_and(|v| v.len() == 2));
+}
+
+#[test]
 fn non_root_net_start_is_requires_root_tool_error() {
     if mn_util::is_root() {
         return; // only meaningful unprivileged
@@ -404,4 +525,37 @@ fn root_live_net_start_pingall_stop_release() {
     }
     // host_cmd ran inside h1's namespace
     assert!(text_of(&msgs[5]).contains("hello-from-h1"));
+}
+
+#[test]
+#[ignore = "requires root and network namespace support"]
+fn root_custom_graph_live_lifecycle() {
+    if !root_tests_enabled() {
+        return;
+    }
+    let mut server = Server::new();
+    let input = [
+        call(
+            1,
+            "net_build",
+            json!({
+                "topology": {"hosts": ["h1", "h2"], "switches": [], "links": [["h1", "h2"]]},
+                "opts": {"controller": "none"}
+            }),
+        ),
+        call(2, "net_start", json!({})),
+        call(3, "net_build", json!({"spec": "minimal"})),
+        call(4, "pingall", json!({})),
+        call(5, "net_stop", json!({})),
+        call(6, "net_release", json!({})),
+    ]
+    .concat();
+    let (msgs, _) = drive(&mut server, &input);
+    for &i in &[0, 1, 3, 4, 5] {
+        assert_ne!(msgs[i]["result"]["isError"], true, "{}", text_of(&msgs[i]));
+    }
+    assert_eq!(msgs[2]["result"]["isError"], true);
+    assert!(text_of(&msgs[2]).contains("network is running"));
+    let ping: Value = serde_json::from_str(&text_of(&msgs[3])).unwrap();
+    assert_eq!(ping["ploss"], 0.0);
 }
