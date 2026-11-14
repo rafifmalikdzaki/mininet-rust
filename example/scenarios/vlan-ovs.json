@@ -1,0 +1,32 @@
+{
+  "name": "vlan-ovs",
+  "switch": "ovs,failMode=standalone",
+  "nodes": [
+    {"name": "s1", "kind": "switch"},
+    {"name": "h1", "kind": "host"},
+    {"name": "h2", "kind": "host"},
+    {"name": "h3", "kind": "host"},
+    {"name": "h4", "kind": "host"}
+  ],
+  "links": [
+    {"a": "h1", "b": "s1", "port_a": 0, "port_b": 1},
+    {"a": "h2", "b": "s1", "port_a": 0, "port_b": 2},
+    {"a": "h3", "b": "s1", "port_a": 0, "port_b": 3},
+    {"a": "h4", "b": "s1", "port_a": 0, "port_b": 4}
+  ],
+  "steps": [
+    {
+      "node": "s1",
+      "command": "set -e; for p in s1-eth1 s1-eth2; do ovs-vsctl set port $p vlan_mode=access tag=10; done; for p in s1-eth3 s1-eth4; do ovs-vsctl set port $p vlan_mode=access tag=20; done",
+      "timeout_secs": 30
+    },
+    {"node": "h1", "command": "ip addr flush dev h1-eth0; ip addr add 10.10.0.1/24 dev h1-eth0; ip link set h1-eth0 up", "timeout_secs": 10},
+    {"node": "h2", "command": "ip addr flush dev h2-eth0; ip addr add 10.10.0.2/24 dev h2-eth0; ip link set h2-eth0 up", "timeout_secs": 10},
+    {"node": "h3", "command": "ip addr flush dev h3-eth0; ip addr add 10.10.0.3/24 dev h3-eth0; ip link set h3-eth0 up", "timeout_secs": 10},
+    {"node": "h4", "command": "ip addr flush dev h4-eth0; ip addr add 10.10.0.4/24 dev h4-eth0; ip link set h4-eth0 up", "timeout_secs": 10},
+    {"node": "h1", "command": "ping -c 1 -W 2 10.10.0.2", "retry_secs": 20, "timeout_secs": 5},
+    {"node": "h3", "command": "ping -c 1 -W 2 10.10.0.4", "retry_secs": 20, "timeout_secs": 5},
+    {"node": "h1", "command": "ping -c 1 -W 2 10.10.0.3; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"VLAN isolation check failed (ping exit $rc)\" >&2; exit 1; fi", "timeout_secs": 5},
+    {"node": "h3", "command": "ping -c 1 -W 2 10.10.0.1; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"VLAN isolation check failed (ping exit $rc)\" >&2; exit 1; fi", "timeout_secs": 5}
+  ]
+}
