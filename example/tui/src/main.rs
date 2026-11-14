@@ -107,13 +107,14 @@ fn read_jsonl(
             Err(e) => errors.push(format!("{name} line {}: {e}", start_line + i as u64 + 1)),
         }
     }
-    let mut lines = complete.bytes().filter(|b| *b == b'\n').count() as u64;
+    let lines = complete.bytes().filter(|b| *b == b'\n').count() as u64;
     let mut consumed = complete.len() as u64;
     if !tail.trim().is_empty() {
         if let Ok(value) = serde_json::from_str(tail) {
             values.push(value);
             consumed = data.len() as u64;
-            lines += 1;
+            // The tail has no terminator yet, so it is not counted as a line.
+            // The newline appended later increments the count exactly once.
         }
     }
     Ok((values, consumed, lines))
@@ -227,22 +228,25 @@ fn refresh(s: &mut Snapshot, offsets: &mut Offsets, run: &Path, prometheus: Opti
             offsets.events_lines += lines;
             s.event_age = event_age(&path);
         }
-        Ok(None) => match read_jsonl(&path, 0, &mut offsets.events_errors) {
-            Ok((events, offset, lines)) => {
-                s.events = events;
-                offsets.events = offset;
-                offsets.events_lines = lines;
-                s.event_age = event_age(&path);
+        Ok(None) => {
+            offsets.events_errors.clear();
+            match read_jsonl(&path, 0, &mut offsets.events_errors) {
+                Ok((events, offset, lines)) => {
+                    s.events = events;
+                    offsets.events = offset;
+                    offsets.events_lines = lines;
+                    s.event_age = event_age(&path);
+                }
+                Err(e) => {
+                    s.events.clear();
+                    s.event_age = None;
+                    offsets.events = 0;
+                    offsets.events_lines = 0;
+                    offsets.events_errors.clear();
+                    errors.push(format!("{}: {e}", path.display()));
+                }
             }
-            Err(e) => {
-                s.events.clear();
-                s.event_age = None;
-                offsets.events = 0;
-                offsets.events_lines = 0;
-                offsets.events_errors.clear();
-                errors.push(format!("{}: {e}", path.display()));
-            }
-        },
+        }
         Err(e) => {
             s.events.clear();
             s.event_age = None;
@@ -264,20 +268,23 @@ fn refresh(s: &mut Snapshot, offsets: &mut Offsets, run: &Path, prometheus: Opti
             offsets.telemetry = offset;
             offsets.telemetry_lines += lines;
         }
-        Ok(None) => match read_jsonl(&path, 0, &mut offsets.telemetry_errors) {
-            Ok((telemetry, offset, lines)) => {
-                s.telemetry = telemetry;
-                offsets.telemetry = offset;
-                offsets.telemetry_lines = lines;
+        Ok(None) => {
+            offsets.telemetry_errors.clear();
+            match read_jsonl(&path, 0, &mut offsets.telemetry_errors) {
+                Ok((telemetry, offset, lines)) => {
+                    s.telemetry = telemetry;
+                    offsets.telemetry = offset;
+                    offsets.telemetry_lines = lines;
+                }
+                Err(e) => {
+                    s.telemetry.clear();
+                    offsets.telemetry = 0;
+                    offsets.telemetry_lines = 0;
+                    offsets.telemetry_errors.clear();
+                    s.telemetry_error = Some(format!("{}: {e}", path.display()));
+                }
             }
-            Err(e) => {
-                s.telemetry.clear();
-                offsets.telemetry = 0;
-                offsets.telemetry_lines = 0;
-                offsets.telemetry_errors.clear();
-                s.telemetry_error = Some(format!("{}: {e}", path.display()));
-            }
-        },
+        }
         Err(e) => {
             s.telemetry.clear();
             offsets.telemetry = 0;
@@ -919,7 +926,69 @@ mod tests {
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(values.len(), 1);
         assert_eq!(consumed, data.len() as u64);
-        assert_eq!(lines, 1);
+        assert_eq!(lines, 0, "unterminated tail is not yet a counted line");
+    }
+
+    #[test]
+    fn refresh_counts_the_terminating_newline_once() {
+        let dir = std::env::temp_dir().join(format!(
+            "research-monitor-newline-count-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("scenario.json"), "{}").unwrap();
+        fs::write(dir.join("events.jsonl"), "{\"a\":1}").unwrap();
+        fs::write(dir.join("telemetry.jsonl"), "{}\n").unwrap();
+        let (mut snapshot, mut offsets) = load(&dir, None);
+        let append = |text: &str| {
+            fs::OpenOptions::new()
+                .append(true)
+                .open(dir.join("events.jsonl"))
+                .unwrap()
+                .write_all(text.as_bytes())
+                .unwrap();
+        };
+        append("\n");
+        refresh(&mut snapshot, &mut offsets, &dir, None);
+        append("not json\n");
+        refresh(&mut snapshot, &mut offsets, &dir, None);
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            snapshot
+                .errors
+                .iter()
+                .any(|e| e.contains("events.jsonl line 2")),
+            "{:?}",
+            snapshot.errors
+        );
+    }
+
+    #[test]
+    fn truncation_drops_errors_from_the_previous_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "research-monitor-truncate-errors-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("scenario.json"), "{}").unwrap();
+        fs::write(dir.join("events.jsonl"), "not json\n{\"event\":\"a\"}\n").unwrap();
+        fs::write(dir.join("telemetry.jsonl"), "not json\n{\"probe\":\"a\"}\n").unwrap();
+        let (mut snapshot, mut offsets) = load(&dir, None);
+        fs::write(dir.join("events.jsonl"), "{\"event\":\"clean\"}\n").unwrap();
+        fs::write(dir.join("telemetry.jsonl"), "{\"probe\":\"clean\"}\n").unwrap();
+        refresh(&mut snapshot, &mut offsets, &dir, None);
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(snapshot.events.len(), 1);
+        assert_eq!(snapshot.events[0]["event"], "clean");
+        assert_eq!(snapshot.telemetry.len(), 1);
+        assert!(
+            !snapshot
+                .errors
+                .iter()
+                .any(|e| e.contains("events.jsonl") || e.contains("telemetry.jsonl")),
+            "{:?}",
+            snapshot.errors
+        );
     }
 
     #[test]
