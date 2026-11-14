@@ -4,7 +4,8 @@ A from-scratch **Rust** re-implementation of [Mininet](https://mininet.org) —
 the network emulator — following containerlab's core lesson: **talk netlink,
 never shell out**. One binary, `mnr`, plus an OMO-style graph TUI (`mnr-tui`)
 and an [MCP](https://modelcontextprotocol.io/) server (`mnr-mcp`) so AI agents
-can build and drive networks natively.
+can build and drive networks natively. Research scenarios can run with real
+Open vSwitch switches under rootless Podman.
 
 ```console
 $ target/release/mnr --topo single,3 --test pingall     # build + emulate
@@ -61,15 +62,18 @@ $ mnr --topo single,3 --switch lxbr   # kernel LinuxBridge instead of OVS
 
 ## Research experiments
 
-[`example/`](example/README.md) provides OSPF, IS-IS, BGP, VLAN and
-multi-tenant presets using FRRouting and the Rust network core. Experiments
-retain commands, protocol state and per-node telemetry. The
+[`example/`](example/README.md) provides OSPF, IS-IS, BGP, VLAN, multi-tenant,
+rootless OVS, active-backup, leaf-spine/STP, ring/ECMP, and trunk-fault
+presets using FRRouting and the Rust network core. Experiments retain commands,
+protocol state and per-node telemetry. OVS is the default for scenario switch
+nodes; LinuxBridge remains available explicitly. The
 [research monitor](example/tui/README.md) displays live run state in a
 terminal; an optional [monitoring stack](example/monitoring/README.md) stores
 host metrics and run events.
 
-The presets run as root in a privileged container. Use trusted scenarios on a
-disposable host or VM; a privileged container is not a security sandbox.
+The presets run as root inside a privileged container; rootless Podman is
+supported for the OVS path. Use trusted scenarios on a disposable host or VM;
+a privileged container is not a security sandbox.
 
 ## No root? Run it rootless
 
@@ -115,7 +119,9 @@ Options:
 - [Ship guide](RUST.md) · [Decision log D1–D26](docs/migration/DECISIONS.md)
 - [Technical validation report](docs/research/TECHNICAL_REPORT.md) — evidence, failure paths, limits
 - [Real OVS switches + rootless](docs/research/REAL_SWITCHES_ROOTLESS.md) — OVS, Podman, benchmarks, runbook
+- [Implementation report](docs/research/IMPLEMENTATION_REPORT.md) — consolidated changes, evidence, defects, and remaining work
 - [Roadmap](ROADMAP.md) — implemented designs, next scenarios, rootless requirements
+- [Changelog](CHANGELOG.md) — unreleased changes and fixes
 - [Scenario complexity map](docs/research/SCENARIO_MAP.md) — plan → connectivity → protocols → faults → scale → agents
 - [Topology design catalogue](docs/research/TOPOLOGY_DESIGNS.md) — 12 designs: Clos, hierarchy, VRF/VXLAN tenancy, bonding, rings, hub-spoke, torus, service chains, IPv6, chaos
 - [Research plans](docs/research/RESEARCH_PLANS.md) — ten programmes across all features
@@ -133,7 +139,9 @@ $ cargo test --workspace               # unit gates (root-gated suites are #[ign
 or fully inside a container, no sudo at all:
 
 ```console
-$ just container-build && just container-run --topo single,3 --test pingall
+$ just container-build && just container-run --topo single,3 --controller none --test pingall
+$ just research-rootless ring-isis ring-001
+$ just bench-rootless 3
 ```
 
 ## Credits & license

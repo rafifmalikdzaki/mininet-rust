@@ -11,6 +11,7 @@ TECHNICAL_REPORT
 SCENARIO_MAP
 TOPOLOGY_DESIGNS
 REAL_SWITCHES_ROOTLESS
+IMPLEMENTATION_REPORT
 RESEARCH_PLANS
 ```
 
@@ -22,6 +23,7 @@ RESEARCH_PLANS
 | Choose a scenario by complexity or research theme | [Scenario map](SCENARIO_MAP.md) |
 | Design a complex topology, routing scheme, or tenant layout | [Topology design catalogue](TOPOLOGY_DESIGNS.md) |
 | Run real OVS switches rootless and see the evidence | [Real switches and rootless](REAL_SWITCHES_ROOTLESS.md) |
+| Read the consolidated implementation record | [Implementation report](IMPLEMENTATION_REPORT.md) |
 | Plan the next experiment or a longer programme | [Research plans](RESEARCH_PLANS.md) |
 | Run the workbench | `example/README.md` and `example/tui/README.md` |
 | Understand the MCP agent surface | [MCP documentation](../mcp.rst) |
