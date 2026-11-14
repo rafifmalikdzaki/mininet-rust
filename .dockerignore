@@ -1,0 +1,5 @@
+.git
+/target
+/example/tui/target
+/runs
+**/__pycache__

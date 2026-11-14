@@ -1,19 +1,17 @@
 # TESTING.md — Test strategy and how to run it (Task 11, `tasks/plan.md`)
 
 How to verify the Rust migration of Mininet at each tier of privilege. There
-are **two tiers**: everything that runs unprivileged (this dev sandbox, normal
-CI), and the **root-gated** suites that need a privileged Linux host or a
-privileged CI job (netlink/netns integration tests + the Python-vs-Rust
-differential topology harness in `scripts/`).
+are **two tiers**: unprivileged checks and **root-gated** suites that need a privileged Linux environment
+(netlink/netns integration tests and the Python-vs-Rust differential topology
+harness in `scripts/`).
 
 Scope note: this document and the scripts it describes live in `scripts/**`
 and `docs/migration/**` only; the Python tree stays untouched as the
 differential reference.
 
-## 1. Unprivileged tier (dev sandbox, normal CI)
+## 1. Unprivileged tier
 
-No root, no netns needed. These are the gates wired into
-`.github/workflows/rust-ci.yaml`:
+No root or network namespaces are needed for the local Rust checks:
 
 ```bash
 cargo fmt --all -- --check
@@ -40,14 +38,12 @@ Script-level smoke checks (also fine unprivileged):
 
 ```bash
 bash -n scripts/diff_topology.sh scripts/run_root_tests.sh   # syntax
-scripts/diff_topology.sh single,3
-# -> prints SKIP (Rust mnr emulation not wired yet) and exits 2 — expected
-#    until apps/mn implements --topo/--dump; NOT a failure
+# The differential harness requires a privileged Linux environment.
 scripts/run_root_tests.sh
-# -> prints the root-required error and exits 3 without running anything
+# -> prints the root-required error and exits 3 when not run as root
 ```
 
-## 2. Root-gated tier (privileged Linux host / privileged CI)
+## 2. Root-gated tier (privileged Linux)
 
 Some verification is impossible without `CAP_NET_ADMIN` + netns, so it is
 explicitly gated and must run on a privileged host:
@@ -67,9 +63,9 @@ enough — always set the env var on the privileged host.
 sudo scripts/run_root_tests.sh
 ```
 
-runs the root-gated cargo suite **and** `scripts/diff_topology.sh` for the
-three fixture specs (`single,3 linear,4 tree,2,2`, override with
-`DIFF_TOPOS="..."`), then prints a summary table. Exit codes: `0` = no
+runs the root-gated cargo suite **and** `scripts/diff_topology.sh` for
+six topology specifications (override with `DIFF_TOPOS="..."`),
+then prints a summary table. Exit codes: `0` = no
 failures (SKIPs allowed), `1` = at least one FAIL/MISMATCH/ERROR, `3` = not
 root / harness error (nothing is executed when not root).
 
@@ -103,9 +99,9 @@ class flags (`DIFF_MN_SWITCH`/`DIFF_MN_HOST`/`DIFF_MN_CONTROLLER`/`DIFF_MN_LINK`
 - **Python reference** — an embedded driver equivalent to
   `python3 bin/mn --topo <spec> --controller none --test none`
   (`buildTopo` + `Mininet` + `net.start()` + `dump` + `links` + `pingall` +
-  `net.stop()`), stdout captured. Requires the repo root on `PYTHONPATH` (the
-  script sets it) and the usual Mininet system deps on the host
-  (`util/install.sh`; the default switch `OVSSwitch` needs `ovs-vsctl` — set
+  `net.stop()`), stdout captured. The script sets `PYTHONPATH` to the
+  legacy reference tree; the usual Mininet system dependencies are needed
+  (`legacy/util/install.sh`; the default switch `OVSSwitch` needs `ovs-vsctl` — set
   e.g. `DIFF_MN_SWITCH=lxbr` to use `LinuxBridge`/`brctl` instead).
 - **Rust port** — `<mn binary> --topo <spec> ... --dump`
   (`target/release/mnr` or `target/debug/mnr`, else `cargo build -p mnr`; override
@@ -140,60 +136,10 @@ h1 -> h2 h3
 *** Results: 0% dropped (6/6 received)
 ```
 
-### 2.4 Privileged CI (GitHub Actions)
 
-Option A — a `container:` job with `--privileged` (container jobs run as root):
+## 3. Isolation note
 
-```yaml
-  root-tests:
-    name: Root-gated tests (privileged container)
-    runs-on: ubuntu-latest
-    container:
-      image: ubuntu:24.04
-      options: --privileged          # needs netns + CAP_NET_ADMIN
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install Python + mininet deps
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends python3 iproute2 \
-            bridge-utils ethtool openvswitch-switch
-      - name: Root-gated netlink tests + differential harness
-        run: ./scripts/run_root_tests.sh
-```
-
-Option B — a hosted `ubuntu-latest` runner (not root, but passwordless sudo;
-`privileged: true` is not available on hosted VM runners, so use `sudo`):
-
-```yaml
-  root-tests:
-    name: Root-gated tests (root runner via sudo)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install Python + mininet deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends python3 iproute2 \
-            bridge-utils ethtool openvswitch-switch
-      - name: Root-gated netlink tests + differential harness
-        run: sudo ./scripts/run_root_tests.sh
-```
-
-Optionally gate the job on the workspace building first
-(`needs: rust` where `rust` is the existing `rust-ci` job).
-
-## 3. Sandbox note
-
-This dev sandbox is **non-root with no netns**, so the root-gated suites cannot
-run here; they are written and smoke-tested only:
-
-```bash
-bash -n scripts/diff_topology.sh scripts/run_root_tests.sh   # pass
-scripts/diff_topology.sh single,3   # -> SKIP, exit 2 (Rust mnr --dump not wired yet)
-scripts/run_root_tests.sh           # -> root-required error, exit 3, nothing executed
-```
-
-The full MATCH/MISMATCH comparison happens on the privileged host/CI above.
+Run kernel-facing experiments in a disposable Linux environment with the
+necessary privileges. Network namespaces and privileged containers are not
+security boundaries for untrusted code. Keep container and host Cargo target
+directories separate because test binaries embed their build-time source paths.

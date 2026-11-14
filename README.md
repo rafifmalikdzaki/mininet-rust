@@ -1,9 +1,5 @@
 # mininet-rust — `mnr`
 
-[![Rust root tests](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-root-tests.yaml/badge.svg)](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-root-tests.yaml)
-[![rust-ci](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-ci.yaml/badge.svg)](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/rust-ci.yaml)
-[![container-image](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/container.yaml/badge.svg)](https://github.com/rafifmalikdzaki/mininet-rust/actions/workflows/container.yaml)
-
 A from-scratch **Rust** re-implementation of [Mininet](https://mininet.org) —
 the network emulator — following containerlab's core lesson: **talk netlink,
 never shell out**. One binary, `mnr`, plus an OMO-style graph TUI (`mnr-tui`)
@@ -50,7 +46,7 @@ live run with real pids/status.)*
 | binary         | what it does |
 |----------------|--------------|
 | `mnr`          | the CLI: `--topo <spec> [--switch <kind>] [--controller none] [--test pingall] [--dump]` |
-| `mnr-tui`      | graph TUI — nodes as boxes, edges by live status; `--frames N` for headless CI renders, `--json` export |
+| `mnr-tui`      | graph TUI — nodes as boxes, edges by live status; `--frames N` for headless renders, `--json` export |
 | `mnr-mcp`      | [MCP](https://modelcontextprotocol.io) stdio server: `topo_plan`, `graph`, `net_start/stop`, `pingall`, `host_cmd`, … |
 | `mnexec`       | netns-attach helper, ported to Rust (`apps/mnexec`) — no C anywhere |
 
@@ -63,16 +59,27 @@ $ mnr --topo single,3 --dump          # plan-only, no root needed
 $ mnr --topo single,3 --switch lxbr   # kernel LinuxBridge instead of OVS
 ```
 
+## Research experiments
+
+[`example/`](example/README.md) provides OSPF, IS-IS, BGP, VLAN and
+multi-tenant presets using FRRouting and the Rust network core. Experiments
+retain commands, protocol state and per-node telemetry. The
+[research monitor](example/tui/README.md) displays live run state in a
+terminal; an optional [monitoring stack](example/monitoring/README.md) stores
+host metrics and run events.
+
+The presets run as root in a privileged container. Use trusted scenarios on a
+disposable host or VM; a privileged container is not a security sandbox.
+
 ## No root? Run it rootless
 
 ```console
 $ sh scripts/mnr-container.sh --topo single,3 --test pingall
 ```
 
-Rootless podman/docker map the container's root into a user namespace, so
-`--privileged` grants `CAP_NET_ADMIN` **only there** — the host gains nothing.
-Details in [DECISIONS.md D25](docs/migration/DECISIONS.md); CI smoke-tests the
-same path in [`container.yaml`](.github/workflows/container.yaml).
+Rootless podman/docker can map container root into a user namespace. Network
+namespace support depends on the runtime and host; privileged containers are
+not a security boundary for untrusted code. See [DECISIONS.md D25](docs/migration/DECISIONS.md).
 
 ## How it compares
 
@@ -81,7 +88,7 @@ same path in [`container.yaml`](.github/workflows/container.yaml).
 | data path | shell-outs to `ip`/`tc`/`ovs-vsctl` | rtnetlink via `rtnetlink` crate — typed, no parsing |
 | error surface | `Command` exit codes + parse | `Result<T, Error>` end-to-end, no unwrap in library code |
 | dry-run | — | `--dump` renders the exact plan, verified byte-identical to Python |
-| tests | runtime-only | 400+ unit + differential suites; every kernel path exercised in privileged CI |
+| tests | runtime-only | unit + differential suites, with optional privileged integration tests |
 | `Tc` qdiscs | `tc` shell-outs | raw netlink `TCA_OPTIONS` blobs, iproute2-compatible |
 
 ## Screenshots — CLI surface
@@ -101,7 +108,7 @@ Options:
 
 ## Docs
 
-- [Ship guide](RUST.md) · [Decision log D1–D25](docs/migration/DECISIONS.md)
+- [Ship guide](RUST.md) · [Decision log D1–D26](docs/migration/DECISIONS.md)
 - [Benchmarks](docs/migration/BENCHMARKS.md) (python-vs-rust ladder with results)
 - [Review verdict](docs/migration/REVIEW.md) (five-axis)
 - TUI deep-dive: [docs/tui.rst](docs/tui.rst); MCP: [docs/mcp.rst](docs/mcp.rst)

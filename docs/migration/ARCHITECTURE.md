@@ -22,7 +22,7 @@ bin/mn              CLI entry point (451 lines, installed by setup.py as a scrip
 mnexec.c            C helper binary (227 lines, built by `make mnexec`)
 mininet/test/       core unittest suite (7 files, 977 LOC)
 examples/test/      example regression tests (runner + 27 files)
-.github/workflows/  CI: code-check.yaml, run-tests.yaml, rust-ci.yaml
+.github/            issue templates (no CI pipeline)
 util/               install.sh, versioncheck.py, vm/ images, patches
 Makefile            codecheck / test / slowtest / mnexec / install targets
 setup.py            setuptools packaging; version read from mininet.net.VERSION
@@ -107,23 +107,12 @@ installed as the `mn` script by `setup.py`). `MininetRunner`:
 only. Only `test_util.py` is runnable in the non-root sandbox — it is captured
 as a golden fixture (`fixtures/test_util_out.txt`).
 
-## 5. CI (`.github/workflows/`)
+## 5. Quality checks (local)
 
-- **`code-check.yaml`** (push/PR): setup-python 3.x, `util/install.sh -n`,
-  `pip install pylint==2.15.7`, then `make codecheck` — which runs
-  `util/versioncheck.py`, pyflakes, `pylint --rcfile=.pylint`, and pep8 with
-  ignore list `E251,E201,E302,E202,E126,E127,E203,E226,E402,W504,W503,E731`.
-- **`run-tests.yaml`** (push/PR): matrix `ubuntu-22.04`/`ubuntu-20.04` ×
-  `python3`/`python2`. `util/install.sh -nv` to install Mininet and its deps,
-  disables udevd, sanity check
-  `sudo mn --switch ovs,protocols=OpenFlow13 --test pingall`, installs pexpect,
-  then `sudo $PYTHON mininet/test/runner.py -v` and
-  `sudo $PYTHON examples/test/runner.py -v`.
-- **`rust-ci.yaml`** (already present on `rust-migration`; push to
-  `rust-migration`/`master` + PRs): `cargo fmt --all -- --check`,
-  `cargo check --workspace --all-targets`, `cargo clippy --workspace
-  --all-targets -- -D warnings`, `cargo test --workspace`,
-  `cargo build --workspace --release`.
+Run `just check` (format + clippy `-D warnings`) and `just test` (workspace
+tests) locally. Kernel-facing tests run with `just root-tests-docker` or
+`just root-tests-host` on a privileged Linux host. No GitHub Actions pipeline
+is configured.
 
 ## 6. External command surface (shell-outs)
 

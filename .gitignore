@@ -16,6 +16,8 @@ trunk
 # Rust build artifacts
 /target/
 !/apps/mnexec/
+/example/tui/target/
+/runs/
 
 # Sphinx build output
 docs/_build/

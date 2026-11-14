@@ -10,8 +10,9 @@ differential-testing reference; the old C `mnexec.c` helper is deleted —
 Migration plan and task list: `tasks/plan.md`. Deep dives:
 `docs/migration/ARCHITECTURE.md` (component inventory + dependency graph),
 `docs/migration/TESTING.md` (test tiers), `docs/migration/DECISIONS.md`
-(decision log D1–D17), `docs/migration/PROGRESS.md` (ledger),
-`docs/migration/BENCHMARKS.md` (perf harness).
+(decision log D1–D26), `docs/migration/PROGRESS.md` (ledger),
+`docs/migration/BENCHMARKS.md` (perf harness), and `example/README.md`
+(research presets, experiment runner and monitoring terminal).
 
 ## Build
 
@@ -76,7 +77,7 @@ is the exact reverse of `start()` with full cleanup on error paths.
 
 See `docs/migration/TESTING.md` for the full strategy.
 
-**Unprivileged tier** (dev sandbox, normal CI — `.github/workflows/rust-ci.yaml`):
+**Unprivileged tier** (local development):
 
 ```bash
 cargo fmt --all -- --check
@@ -85,8 +86,7 @@ cargo test --workspace        # unit + python3-driven differential tests (no roo
 cargo build --workspace --release
 ```
 
-**Root-gated tier** (privileged host or CI — `.github/workflows/rust-root-tests.yaml`,
-a `container: ubuntu:24.04` job with `options: --privileged`):
+**Root-gated tier** (disposable privileged Linux environment):
 
 ```bash
 MN_RUST_ROOT_TESTS=1 cargo test --workspace -- --ignored --test-threads=1   # netlink/netns integration tests
@@ -130,15 +130,10 @@ TODO / out of v1 scope (D17):
 - `--innamespace` (control network) and `--custom` (exec Python files) are
   marked TODOs in `mn-net` / `apps/mn`.
 
-## CI
+## Local checks
 
-- `.github/workflows/rust-ci.yaml` — fmt/clippy/test/release build on push/PR
-  to `rust-migration` and `master` (unprivileged).
-- `.github/workflows/rust-root-tests.yaml` — privileged container job: builds
-  the workspace, runs `MN_RUST_ROOT_TESTS=1 cargo test --workspace --
-  --ignored --test-threads=1`, then `sh scripts/run_root_tests.sh` (which
-  also runs the Python-vs-Rust `diff_topology.sh` harness for `single,3
-  linear,4 tree,2,2`). `allow-failure: false`.
+Run `just check` and `just test` locally. For kernel-facing tests use a
+disposable privileged Linux environment and `just root-tests-docker`.
 
 ## Python bindings & examples
 

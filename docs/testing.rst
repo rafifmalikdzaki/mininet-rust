@@ -10,15 +10,15 @@ Unprivileged (any machine)
 
    $ cargo fmt --all -- --check
    $ cargo clippy --workspace --all-targets -- -D warnings
-   $ cargo test --workspace          # 420 passed, 0 failed
+   $ cargo test --workspace          # unit + Python-driven differential tests
    $ target/debug/mnr --topo single,3 --dump   # dry-run, no root
 
 The suites include differential tests that drive the **original Python code**
 and assert identical outputs (5536 util cases, 52 topo cases, 11 net-plan
 specs), plus golden tests captured from live CPython CLI sessions.
 
-Privileged (root / CI)
-----------------------
+Privileged (root / disposable Linux host)
+-----------------------------------------
 
 .. code-block:: console
 
@@ -27,8 +27,8 @@ Privileged (root / CI)
    # + scripts/diff_topology.sh single,3 linear,4 tree,2,2
    #   (diffs Rust mnr output against the Python original)
 
-CI: ``.github/workflows/rust-ci.yaml`` (fmt/clippy/test/release) and
-``.github/workflows/rust-root-tests.yaml`` (privileged container with OVS).
+Checks run locally; there is no GitHub Actions pipeline. Network namespaces
+and privileged containers are not security boundaries for untrusted code.
 
 Benchmarks & differential scenarios
 -----------------------------------
@@ -40,5 +40,5 @@ reference across an increasing-complexity ladder: ``single,3``, ``linear,4``,
 ``scripts/bench_scenarios.sh`` (root) benchmarks both implementations on the
 same ladder and emits a markdown table (wall time of
 ``--topo SPEC --controller none --test pingall`` + ping loss, median/min/max
-over N runs). See :doc:`migration/BENCHMARKS` for methodology; CI uploads the
-table as the ``bench-results`` artifact.
+over N runs). See :doc:`migration/BENCHMARKS` for methodology; set
+``BENCH_OUT`` to save the table.

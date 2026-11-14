@@ -33,16 +33,18 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   (Mbps x 125000 bytes/s) instead of Python's HTB root+class — HTB netlink blobs
   are unmodelled by the crate and unverifiable non-root. `use_htb` parsed but the
   HTB path is a marked TODO.
-- **Revisit:** Implement HTB via netlink when a privileged CI can verify it.
+- **Revisit:** Implement HTB via netlink when a privileged environment can
+  verify it.
 
 ## D26 — all C removed from the tree (`mnexec.c`, `sch_htb.c` deleted)
 - **Decision:** `legacy/mnexec.c` and `legacy/util/sch_htb-ofbuf/` are
   deleted; the legacy `Makefile` no longer has an `mnexec` target. The
   `mnexec` binary the Python reference side pathCheck()s at runtime is now
   the Rust `apps/mnexec` (`cargo build --release -p mnexec`), installed on
-  PATH by CI (rust-root-tests.yaml) and scripts/bench_scenarios.sh.
-  container/Dockerfile no longer COPYs/compiles any C; CI apt lists no
-  longer install gcc/make/libc6-dev.
+  PATH by `scripts/bench_scenarios.sh` and the research image.
+  container/Dockerfile no longer COPYs/compiles any C. The `justfile` apt
+  list still installs gcc+libc6-dev — not to compile C, but because rustc
+  links through `cc` (needs crt1.o etc.); make was dropped.
 - **Why:** the project is pure Rust + frozen Python reference; zero C
   sources, zero C toolchain in any build path.
 - **Note:** historical mentions of `mnexec.c` in ARCHITECTURE.md/PROGRESS.md
@@ -136,8 +138,8 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
 
 ## D13 — Toolchain
 - **Decision:** `rust-toolchain.toml` pins `stable`; edition 2021; `Cargo.lock`
-  committed; CI runs fmt/check/clippy `-D warnings`/test/release build
-  (`.github/workflows/rust-ci.yaml`).
+  committed; `just check` runs fmt/clippy `-D warnings` and `just test` runs
+  the workspace suite locally.
 
 ## D14 — `--dump` is a harness-only flag beyond `bin/mn`'s optparse
 - **Decision:** `mn --dump` prints the `=== topo ===` / `=== dump ===` /
@@ -246,7 +248,8 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   `mnr` on an increasing-complexity ladder (single,3 → linear,10 → tree,3,3),
   median/min/max wall time of `--test pingall` + ping loss, N runs + warmup,
   host metadata captured; run only after `diff_topology.sh` MATCHes the same
-  specs (fast-but-wrong is not a win). CI uploads the markdown table.
+  specs (fast-but-wrong is not a win). Save the markdown table with
+  `BENCH_OUT`.
 
 ## D22 — CI repairs (fork reality: runner image drift + fork checkout name)
 - **Decision:** four CI defects found by a red PR run, each fixed at the root:
@@ -333,7 +336,7 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
     `cargo test -- --ignored` (used by the root-test script) *runs*
     ignored doctests, and it did not compile (E0433). It is now a real
     compiling doctest.
-- **CI workflow:** rust-root-tests.yaml now also installs `iputils-ping`
+- **Historical CI workflow:** rust-root-tests.yaml also installed `iputils-ping`
   (ping tests) and `openvswitch-testcontroller` + a `controller` shim
   (default controller c0, same shim as run-tests.yaml), and remounts
   cgroup2 rw when possible.
@@ -382,8 +385,9 @@ Every consequential decision, with reasoning and revisit conditions. Branch `rus
   unless the user passed `--switch`, because rootless containers usually
   cannot load the host's OVS kernel datapath module (kernel LinuxBridge needs
   no module). `--switch ovs` remains available when the module exists.
-- **CI:** `.github/workflows/container.yaml` builds the image and runs
-  `single,3`/`linear,4` pingall + a `tree,2,2 --dump` through the wrapper on
-  every push/PR (GH runners have passwordless docker).
+- **CI (historical):** `.github/workflows/container.yaml` built the image and
+  ran `single,3`/`linear,4` pingall + a `tree,2,2 --dump` through the wrapper on
+  every push/PR. GitHub Actions workflows were later removed; run the same
+  commands locally.
 - **Verified locally:** image builds; `mnr-container.sh --topo single,3
   --test pingall` → 0% loss; `--topo tree,2,2 --dump` → plan output.

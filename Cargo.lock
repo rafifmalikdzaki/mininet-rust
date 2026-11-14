@@ -453,6 +453,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "experiment-runner"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "mn-net",
+ "mn-topo",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "fancy-regex"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -932,6 +943,7 @@ name = "mnr-mcp"
 version = "0.1.0"
 dependencies = [
  "mn-net",
+ "mn-topo",
  "mn-util",
  "mnr-tui",
  "serde",

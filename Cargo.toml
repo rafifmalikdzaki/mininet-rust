@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/util", "crates/topo", "crates/netlink", "crates/link", "crates/node", "crates/net", "crates/tui", "crates/mcp", "apps/mn", "apps/mnexec", "apps/mn-tui", "apps/mn-mcp", "bindings/python"]
+members = ["crates/util", "crates/topo", "crates/netlink", "crates/link", "crates/node", "crates/net", "crates/tui", "crates/mcp", "apps/mn", "apps/mnexec", "apps/mn-tui", "apps/mn-mcp", "bindings/python", "example"]
 
 [workspace.package]
 edition = "2021"
@@ -20,3 +20,6 @@ futures = "0.3"
 
 [profile.release]
 opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

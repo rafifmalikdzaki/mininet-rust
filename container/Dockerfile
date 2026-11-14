@@ -19,6 +19,7 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY apps apps
 COPY bindings bindings
+COPY example example
 RUN cargo build --workspace --release
 
 FROM ubuntu:24.04

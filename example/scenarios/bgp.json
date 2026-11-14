@@ -1,0 +1,12 @@
+{
+  "name": "bgp",
+  "nodes": [{"name":"r1","kind":"host"},{"name":"r2","kind":"host"}],
+  "links": [{"a":"r1","b":"r2","port_a":0,"port_b":0}],
+  "steps": [
+    {"node":"r1","command":"set -e; ip addr flush dev r1-eth0; ip addr add 10.0.12.1/30 dev r1-eth0; ip addr add 10.1.1.1/32 dev lo; ip link set lo up; ip link set r1-eth0 up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-bgp-r1; mkdir -p $d /etc/frr/mnr-bgp-r1; : > /etc/frr/mnr-bgp-r1/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname r1\\nlog file %s/zebra-runtime.log\\n' \"$d\" > $d/zebra.conf; printf 'hostname r1\\nlog file %s/bgpd-runtime.log\\nrouter bgp 65001\\n bgp router-id 1.1.1.1\\n no bgp ebgp-requires-policy\\n neighbor 10.0.12.2 remote-as 65002\\n address-family ipv4 unicast\\n  network 10.1.1.1/32\\n exit-address-family\\n' \"$d\" > $d/bgpd.conf; /usr/lib/frr/zebra -d -N mnr-bgp-r1 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/bgpd -d -N mnr-bgp-r1 -f $d/bgpd.conf -i $d/bgpd.pid -z $d/zserv.api >$d/bgpd.log 2>&1","timeout_secs":30},
+    {"node":"r2","command":"set -e; ip addr flush dev r2-eth0; ip addr add 10.0.12.2/30 dev r2-eth0; ip addr add 10.2.2.2/32 dev lo; ip link set lo up; ip link set r2-eth0 up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-bgp-r2; mkdir -p $d /etc/frr/mnr-bgp-r2; : > /etc/frr/mnr-bgp-r2/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname r2\\nlog file %s/zebra-runtime.log\\n' \"$d\" > $d/zebra.conf; printf 'hostname r2\\nlog file %s/bgpd-runtime.log\\nrouter bgp 65002\\n bgp router-id 2.2.2.2\\n no bgp ebgp-requires-policy\\n neighbor 10.0.12.1 remote-as 65001\\n address-family ipv4 unicast\\n  network 10.2.2.2/32\\n exit-address-family\\n' \"$d\" > $d/bgpd.conf; /usr/lib/frr/zebra -d -N mnr-bgp-r2 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/bgpd -d -N mnr-bgp-r2 -f $d/bgpd.conf -i $d/bgpd.pid -z $d/zserv.api >$d/bgpd.log 2>&1","timeout_secs":30},
+    {"node":"r1","command":"vtysh -N mnr-bgp-r1 -c 'show bgp summary' | awk '$1 == \"10.0.12.2\" && $10 ~ /^[0-9]+$/ { found=1; print; } END { exit !found }'","retry_secs":120,"timeout_secs":5},
+    {"node":"r1","command":"ip route show 10.2.2.2/32 | grep 'via 10.0.12.2' && ping -c 1 -W 2 -I 10.1.1.1 10.2.2.2","retry_secs":30,"timeout_secs":5},
+    {"node":"r2","command":"ip route show 10.1.1.1/32 | grep 'via 10.0.12.1' && ping -c 1 -W 2 -I 10.2.2.2 10.1.1.1","retry_secs":30,"timeout_secs":5}
+  ]
+}

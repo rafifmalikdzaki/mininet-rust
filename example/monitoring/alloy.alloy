@@ -1,0 +1,18 @@
+loki.source.file "research_events" {
+  targets = [
+    { "__path__" = "/runs/*/events.jsonl", "job" = "research-events" },
+    { "__path__" = "/runs/*/telemetry.jsonl", "job" = "research-telemetry" },
+  ]
+  forward_to = [loki.write.local.receiver]
+
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

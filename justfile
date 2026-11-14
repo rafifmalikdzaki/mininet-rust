@@ -5,6 +5,7 @@
 
 root := `git rev-parse --show-toplevel`
 image := "mnr-rootless:latest"
+research_image := "mininet-research:latest"
 
 # default recipe: list available commands
 default:
@@ -20,22 +21,27 @@ build:
 build-release:
     cargo build --workspace --release
 
-# format check + clippy -D warnings (the CI gates)
+# format check + clippy -D warnings (workspace + research monitor)
 check:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets -- -D warnings
+    cargo fmt --manifest-path example/tui/Cargo.toml -- --check
+    cargo clippy --manifest-path example/tui/Cargo.toml --all-targets -- -D warnings
 
 # apply formatting
 fmt:
     cargo fmt --all
+    cargo fmt --manifest-path example/tui/Cargo.toml
 
 # clippy with warnings as errors
 clippy:
     cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --manifest-path example/tui/Cargo.toml --all-targets -- -D warnings
 
-# non-root test suite (everything except the MN_RUST_ROOT_TESTS=1 tests)
+# non-root test suite (workspace + research monitor)
 test:
     cargo test --workspace --no-fail-fast
+    cargo test --manifest-path example/tui/Cargo.toml
 
 # one crate or a test-name filter: just test-filter mn-link netem
 test-filter what:
@@ -47,18 +53,20 @@ root-tests-host:
     MN_RUST_ROOT_TESTS=1 cargo test --workspace -- --ignored --test-threads=1
 
 # root-gated suites in a privileged docker container (repeat runs are fast;
-# what the CI rust-root-tests job effectively runs)
+# uses a separate Cargo target directory from host builds)
+# gcc/libc6-dev provide rustc's linker (cc + crt); no C sources in tree.
 root-tests-docker:
     docker run --rm --privileged \
         -v {{root}}:/w -w /w \
         -v mnr-cargo-home:/root/.cargo \
         ubuntu:24.04 bash -c '\
             export DEBIAN_FRONTEND=noninteractive; \
+            export CARGO_TARGET_DIR=/root/.cargo/mnr-container-target; \
             apt-get update -qq >/dev/null 2>&1; \
             apt-get install -y -qq --no-install-recommends \
                 ca-certificates curl python3 python3-packaging iproute2 \
                 net-tools bridge-utils ethtool iptables iputils-ping \
-                >/dev/null 2>&1; \
+                gcc libc6-dev >/dev/null 2>&1; \
             test -d /root/.cargo/bin || curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable >/dev/null 2>&1; \
             export PATH=$PATH:/root/.cargo/bin; \
             MN_RUST_ROOT_TESTS=1 cargo test --workspace --no-fail-fast \
@@ -75,9 +83,26 @@ diff spec:
 bench runs="5":
     sudo env BENCH_RUNS={{runs}} sh scripts/bench_scenarios.sh
 
-# full privileged one-shot (tests + diff ladder + summary) as CI's step 2
+# full privileged one-shot (tests + diff ladder + summary)
 root-tests:
     sudo sh scripts/run_root_tests.sh
+
+# --- research experiments ------------------------------------------------------
+
+# build the research image (FRRouting + experiment runner)
+research-build:
+    docker build -f example/Dockerfile -t {{research_image}} .
+
+# run one preset: just research bgp bgp-001
+# scenarios: ospf isis bgp vlan multi-tenant multi-tenant-fault
+research scenario="ospf" run="research-run":
+    mkdir -p "{{root}}/runs"
+    docker run --rm --init --privileged --network none \
+        -v "{{root}}/runs:/runs" {{research_image}} "/scenarios/{{scenario}}.json" "/runs/{{run}}"
+
+# live read-only monitor for a completed or running experiment
+research-monitor run:
+    cargo run --manifest-path example/tui/Cargo.toml -- {{root}}/runs/{{run}}
 
 # --- containers (rootless, no sudo needed) ---------------------------------------
 
@@ -94,7 +119,7 @@ container-run *args:
 container-shell:
     sh scripts/mnr-container.sh sh
 
-# what the container CI job (.github/workflows/container.yaml) runs
+# local container smoke test
 [private]
 container-smoke:
     docker build -t mnr-rootless:ci -f container/Dockerfile .

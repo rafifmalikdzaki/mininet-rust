@@ -38,8 +38,8 @@ sudo BENCH_TOPOS="single,3 tree,3,3" BENCH_RUNS=10 sh scripts/bench_scenarios.sh
 sudo BENCH_OUT=bench-results.md sh scripts/bench_scenarios.sh
 ```
 
-CI: `.github/workflows/rust-root-tests.yaml` runs it after the differential
-harness and uploads `bench-results.md` as the `bench-results` artifact.
+Run it on a privileged Linux host. The script reports a failure string rather
+than a benchmark row when an invocation cannot be measured.
 
 ## Results
 
@@ -75,11 +75,51 @@ at these sizes; process/netns spawn dominates. This is a known, measured
 trade-off of the deferred-lifecycle design, not a correctness issue — and it
 is where future optimization effort has the highest value (see ROADMAP).
 
+
+## Local re-run (2026-11-13, privileged docker container on the dev host)
+
+Host: Linux 7.2.15-zen1 x86_64, 20 cpus (12th Gen Intel i9-12900H), Python 3.12.3,
+`--switch lxbr` both sides, 3 runs + 1 warmup per cell, release build with
+`lto=true, codegen-units=1, strip=true`. All six `diff_topology.sh` specs MATCH;
+root-gated cargo suites: 28 passed / 0 failed.
+
+| scenario | nodes | impl | wall s median | ping loss |
+|---|---|---|---|---|
+| single,3 | 4 | python | 0.344 | 0% |
+| single,3 | 4 | rust (mnr) | 0.246 | 0% |
+| linear,4 | 8 | python | 0.690 | 0% |
+| linear,4 | 8 | rust (mnr) | 0.498 | 0% |
+| linear,10 | 20 | python | 1.753 | 0% |
+| linear,10 | 20 | rust (mnr) | 1.552 | 0% |
+| tree,2,2 | 7 | python | 0.587 | 0% |
+| tree,2,2 | 7 | rust (mnr) | 0.452 | 0% |
+| tree,3,2 | 15 | python | 1.282 | 0% |
+| tree,3,2 | 15 | rust (mnr) | 1.101 | 0% |
+| tree,3,3 | 40 | python | 4.455 | 0% |
+| tree,3,3 | 40 | rust (mnr) | 6.084 | 0% |
+
+On this host the Rust port is ~1.1-1.4x *faster* than Python for 4-15 nodes;
+only the 40-node tree,3,3 rung (702 pings) is slower (~1.37x) — pingall
+dominates there and Python's fan-out wins. Peak RSS on tree,3,3 dry-run:
+python 11.7 MB vs mnr 7.3 MB.
+
+## Binary size / footprint (release profile hardening, 2026-11-13)
+
+`[profile.release]` gained `lto = true`, `codegen-units = 1`, `strip = true`:
+
+| binary | before | after | delta |
+|---|---|---|---|
+| mnr | 4,959,480 B | 3,123,664 B | -37% |
+| mnr-tui | 5,288,032 B | 3,299,696 B | -38% |
+| mnr-mcp | 4,275,512 B | 2,644,560 B | -38% |
+| mnexec | 528,184 B | 371,152 B | -30% |
+
 ## Notes / limitations
 
 - Wall time includes process spawn, netns/veth/qdisc setup, pingall, teardown.
-- CI runs the ladder with `BENCH_SWITCH=lxbr` (kernel LinuxBridge) because
-  the privileged GH container cannot load the OVS kernel datapath module;
-  OVS-based runs remain covered by the VM workflows (`run-tests.yaml`).
+- Run the ladder locally with `BENCH_SWITCH=lxbr` (kernel LinuxBridge) when the
+  host cannot load the OVS kernel datapath module; use an environment with OVS
+  for OVS-based comparisons. Use `just bench` on a privileged host;
+  `just root-tests` runs the root suite and the differential ladder.
 - The `tree,3,3` rung (40 nodes, 702 pings) is the heaviest; per-run variance
   is small (min/max within ~1%), so medians are stable.
