@@ -50,8 +50,11 @@ Validation snapshot (2026-11-14, host + privileged Docker)
 * MCP protocol suite 13 passed; live custom-graph build/start/ping/stop/release
   passed;
 * differential topology ladder 6/6 MATCH; Python bindings 5/5 non-root smoke;
+* real OVS scenarios pass rootless: VLAN, multi-tenant, trunk fault, OSPF,
+  active-backup bonding, and redundant leaf-spine/STP;
 * Sphinx docs build with zero warnings;
-* full evidence, limits, and recommendations: :doc:`research/TECHNICAL_REPORT`.
+* full evidence, limits, and recommendations: :doc:`research/TECHNICAL_REPORT`;
+* real-switch/rootless report: :doc:`research/REAL_SWITCHES_ROOTLESS`.
 
 Benchmarks & differential scenarios
 -----------------------------------

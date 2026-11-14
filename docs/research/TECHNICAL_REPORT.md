@@ -5,6 +5,10 @@
 **Scope:** feature validation, failure-path testing, robustness analysis, and
 research planning for the Rust Mininet emulator and its research workbench.
 
+**Follow-up:** real OVS switches and rootless Podman are now implemented and
+validated separately in [Real switches and rootless](REAL_SWITCHES_ROOTLESS.md).
+The LinuxBridge live result below is retained as historical validation.
+
 ## Executive summary
 
 | Claim | Result |

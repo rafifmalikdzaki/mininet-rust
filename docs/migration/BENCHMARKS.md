@@ -22,9 +22,9 @@ to `ip`/`tc` — across topologies of **increasing complexity**.
 - **Impls:** `python3 bin/mn` (reference) vs `target/release/mnr` (Rust).
 - **Repetitions:** 1 warmup + `BENCH_RUNS` (default 5) timed runs; report
   median / min / max wall seconds and the modal ping-loss line.
-- **Controls:** same host, same kernel, both binaries release-built, root,
-  OVS not involved (`--controller none`, default `ovs` switch type is only
-  *configured* if started — pingall runs hosts-only links via TCLink; see notes).
+- **Controls:** same host, same kernel, both binaries release-built, root or a
+  privileged container. Current runs use real OVS (`ovs,failMode=standalone`)
+  with `--nolistenport`; legacy runs used LinuxBridge.
 - **Host capture:** the script records `uname -srm`, CPU model, core count,
   Python version, mnr version, git commit, and date into the report header.
 - **Correctness first:** benchmarks only run after `diff_topology.sh` MATCHes
@@ -75,6 +75,31 @@ at these sizes; process/netns spawn dominates. This is a known, measured
 trade-off of the deferred-lifecycle design, not a correctness issue — and it
 is where future optimization effort has the highest value (see ROADMAP).
 
+
+## Real OVS, rootless (2026-11-14)
+
+Docker-built image loaded into rootless Podman, with Python 3.12.3, OVS 3.3.9,
+and Podman 6.2.0. Three timed samples plus one warmup per cell; all twelve cells
+had 0% ping loss. Full methodology and caveats:
+`docs/research/REAL_SWITCHES_ROOTLESS.md`.
+
+| scenario | nodes | impl | median s | min/max s |
+|---|---:|---|---:|---|
+| single,3 | 4 | python | 0.204 | 0.197/0.210 |
+| single,3 | 4 | rust | 0.306 | 0.297/0.315 |
+| linear,4 | 8 | python | 0.408 | 0.397/0.412 |
+| linear,4 | 8 | rust | 0.543 | 0.529/0.579 |
+| linear,10 | 20 | python | 0.972 | 0.923/0.985 |
+| linear,10 | 20 | rust | 1.799 | 1.766/1.812 |
+| tree,2,2 | 7 | python | 0.314 | 0.308/0.355 |
+| tree,2,2 | 7 | rust | 0.503 | 0.491/0.511 |
+| tree,3,2 | 15 | python | 0.676 | 0.666/0.692 |
+| tree,3,2 | 15 | rust | 1.268 | 1.243/1.298 |
+| tree,3,3 | 40 | python | 2.363 | 2.330/2.373 |
+| tree,3,3 | 40 | rust | 6.422 | 6.372/6.517 |
+
+This is a correctness/relative-cost smoke, not a performance verdict; see the
+report for the OVS startup and container caveats.
 
 ## Local re-run (2026-11-13, privileged docker container on the dev host)
 

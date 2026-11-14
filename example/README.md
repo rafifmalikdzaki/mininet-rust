@@ -1,15 +1,22 @@
 # Rust Mininet research experiments
 
-The runner constructs an arbitrary `mn-topo` graph and starts it with `mn-net`. Hosts (including routers) have separate Linux network namespaces; switches are Linux bridges in the container network namespace. Scenario commands execute as root. Do not run untrusted scenarios: commands are unrestricted shell code and a privileged container has substantial host privileges. Never mount sensitive host paths into it.
+The runner constructs an arbitrary `mn-topo` graph and starts it with `mn-net`. Hosts (including routers) have separate Linux network namespaces; switch nodes are real Open vSwitch bridges by default (LinuxBridge remains available explicitly). Scenario commands execute as root. Do not run untrusted scenarios: commands are unrestricted shell code and a privileged container has substantial host privileges. Never mount sensitive host paths into it.
 
 ## Prerequisites and launch
 
-Use Linux with network namespace, veth and bridge kernel support, Docker (or compatible container runtime), and permission to start a privileged container. The image includes FRRouting, iproute2, ping, iperf3, tcpdump, the Rust `mnexec`, `mnr`, and the experiment runner. Build from the repository root:
+Use Linux with network namespace, veth and OVS kernel support, Docker or rootless Podman, and permission to start a privileged container. Rootless Podman cannot load the OVS kernel module; the host must already provide it. The image includes FRRouting, Open vSwitch, iproute2, ping, iperf3, tcpdump, the Rust `mnexec`, `mnr`, and the experiment runner. The entrypoint starts OVS before the scenario. Build from the repository root:
 
 ```sh
 docker build -f example/Dockerfile -t mininet-research .
 mkdir -p runs
 docker run --rm --init --privileged --network none -v "$PWD/runs:/runs" \
+  mininet-research /scenarios/ospf.json /runs/ospf-001
+```
+
+Rootless Podman equivalent (the image can be built with Docker and loaded with `docker save ... | podman load`):
+
+```sh
+podman run --rm --init --privileged --network none -v "$PWD/runs:/runs" \
   mininet-research /scenarios/ospf.json /runs/ospf-001
 ```
 
@@ -28,22 +35,31 @@ Choose a file under `/scenarios/` in the container:
 | `ospf.json` | Two OSPF routers, adjacency, route installation and reachability |
 | `isis.json` | Two IS-IS routers, adjacency, route installation and reachability |
 | `bgp.json` | eBGP peering between two autonomous systems |
-| `vlan.json` | Two VLANs with connectivity and isolation checks |
+| `vlan.json` | Two VLANs with connectivity and isolation checks (legacy LinuxBridge) |
+| `vlan-ovs.json` | Same VLAN checks with real OVS access ports |
+| `multi-tenant-ovs.json` | Three sites/tenants on OVS, full isolation matrix |
+| `multi-tenant-fault-ovs.json` | OVS multi-tenant trunk failure and recovery |
+| `ospf-ovs.json` | OSPF adjacency and routes through an OVS switch |
+| `dual-home-ovs.json` | Active-backup bond across two OVS ports |
+| `clos-l2-ovs.json` | Redundant leaf-spine OVS fabric with STP |
 | `multi-tenant.json` | Three sites and three isolated tenants using overlapping addresses |
 | `multi-tenant-fault.json` | Multi-tenant topology with trunk failure and recovery |
+
+The `switch` field selects the switch implementation for `switch` nodes. It defaults to `ovs,failMode=standalone`; use `"switch":"lxbr"` for legacy LinuxBridge commands. New scenarios should use OVS and configure ports with `ovs-vsctl` (VLAN tags/trunks) rather than `bridge vlan`.
 
 For a live read-only terminal, start a run with `--hold-secs 120`, then run
 `cargo run --manifest-path example/tui/Cargo.toml -- runs/ospf-001` from a
 second terminal. The [monitoring guide](monitoring/README.md) covers the
 optional Prometheus, Grafana, Alloy and Loki stack.
 
-The broader validation report, scenario complexity map, and research plans
-live under `docs/research/` (built into the Sphinx docs as the “Research
-program” section).
+The broader validation report, scenario complexity map, research plans, and
+real-switch/rootless evidence live under `docs/research/` (built into the
+Sphinx docs as the “Research program” section). See `ROADMAP.md` for the next
+designs and benchmarks.
 
 ## Scenario format
 
-JSON object: `name`, `nodes`, `links`, and `steps`. Nodes have `name` (1–9 ASCII letters, digits or underscores) and `kind` (`host` or `switch`). Links have endpoint names `a`, `b` and optional integer `port_a`, `port_b`. Host port numbering starts at 0, switch numbering at 1; interface names are `<node>-eth<port>` and must fit the kernel's 15-character limit, so a nine-character node name cannot use a three-digit port. Ports can be explicit; omitted ports use Mininet's allocation order. Duplicate names and ports, missing endpoints, self-links, and unknown fields are rejected.
+JSON object: `name`, optional `switch`, `nodes`, `links`, and `steps`. Nodes have `name` (1–9 ASCII letters, digits or underscores) and `kind` (`host` or `switch`). Links have endpoint names `a`, `b` and optional integer `port_a`, `port_b`. Host port numbering starts at 0, switch numbering at 1; interface names are `<node>-eth<port>` and must fit the kernel's 15-character limit, so a nine-character node name cannot use a three-digit port. Ports can be explicit; omitted ports use Mininet's allocation order. Duplicate names and ports, missing endpoints, self-links, and unknown fields are rejected.
 
 The scenario name must be 1–64 ASCII letters, digits, underscores or hyphens. Built-in routing presets use FRR pathspaces named `mnr-<scenario>-<node>` under `/var/run/frr`; name your daemon config files `ospfd.conf`, `isisd.conf`, or `bgpd.conf` there to enable the corresponding protocol probes.
 

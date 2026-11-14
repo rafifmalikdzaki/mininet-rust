@@ -10,6 +10,7 @@ increasing complexity, and a portfolio of research plans.
 TECHNICAL_REPORT
 SCENARIO_MAP
 TOPOLOGY_DESIGNS
+REAL_SWITCHES_ROOTLESS
 RESEARCH_PLANS
 ```
 
@@ -20,9 +21,11 @@ RESEARCH_PLANS
 | Know what was tested and what remains unproven | [Technical report](TECHNICAL_REPORT.md) |
 | Choose a scenario by complexity or research theme | [Scenario map](SCENARIO_MAP.md) |
 | Design a complex topology, routing scheme, or tenant layout | [Topology design catalogue](TOPOLOGY_DESIGNS.md) |
+| Run real OVS switches rootless and see the evidence | [Real switches and rootless](REAL_SWITCHES_ROOTLESS.md) |
 | Plan the next experiment or a longer programme | [Research plans](RESEARCH_PLANS.md) |
 | Run the workbench | `example/README.md` and `example/tui/README.md` |
 | Understand the MCP agent surface | [MCP documentation](../mcp.rst) |
+| See the next implementation sequence | `ROADMAP.md` at the repository root |
 
 ## Evidence at a glance
 
@@ -37,6 +40,9 @@ RESEARCH_PLANS
   multi-tenant trunk fault.
 - Malformed scenarios, nonzero exits, timeouts, missing binaries, and
   `expect_stdout` mismatches fail closed with artifacts and cleanup.
+- Real OVS switches, rootless Podman, OVS VLAN/multi-tenant/fault, routed OVS,
+  active-backup bonding, and leaf-spine STP are validated; see the
+  real-switch report.
 - The monitoring stack starts healthy with all Prometheus targets up, a
   provisioned Grafana dashboard, and verified Alloy→Loki event/telemetry ingestion.
 

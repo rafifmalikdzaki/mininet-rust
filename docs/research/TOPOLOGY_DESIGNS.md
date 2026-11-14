@@ -11,9 +11,9 @@ earlier design and add routing, tenancy, or a link-failure model on top.
 
 | Constraint | Consequence |
 |---|---|
-| Node kinds are `host` or `switch` only | Routers, firewalls, and servers are `host` nodes running FRR/iptables/etc. A `switch` is a Linux bridge. |
+| Node kinds are `host` or `switch` only | Routers, firewalls, and servers are `host` nodes running FRR/iptables/etc. A `switch` is a real Open vSwitch bridge by default; `lxbr` is a legacy alternative. |
 | Links are veth pairs | Every link is point-to-point; L2 broadcast domains require a `switch` node or a bridge created inside a host namespace. |
-| Scenario switches use LinuxBridge (`lxbr`) | Designs must use bridge VLAN filtering; OVS-specific features (LACP, OpenFlow, EVPN control plane) are not available in the research runner without new work. |
+| Scenario switches use OVS (`ovs,failMode=standalone`) by default | Use `ovs-vsctl` for VLAN access/trunk configuration. OVS has no controller; standalone learning is used. LACP/EVPN/OpenFlow control planes remain unimplemented. `lxbr` scenarios must declare `"switch":"lxbr"`. |
 | Node names 1–9 ASCII letters/digits/underscore | Use short prefixes: `sp1`, `lf2`, `cr1`, `pe1`, `h10`, `t1a`. |
 | Interface names `<node>-eth<port>` ≤ 15 chars | A 9-character node name cannot have a 3-digit port. Prefer 3–5-character node names for dense fabrics. |
 | Host ports start at 0; switch ports start at 1 | Always write explicit ports for designs with more than one link per node. |
@@ -28,7 +28,7 @@ earlier design and add routing, tenancy, or a link-failure model on top.
 |---|---|---|
 | L0 physical | veth pairs, namespaces, ports | `Topo`, link list, explicit ports |
 | L1 link | single/parallel/redundant links, loss/delay | veth, bonding, `tc netem` |
-| L2 switching | bridges, VLAN filtering, trunks, access ports | LinuxBridge, `bridge vlan` |
+| L2 switching | bridges, VLAN filtering, trunks, access ports | OVS (`ovs-vsctl` VLAN tags/trunks), legacy LinuxBridge (`bridge vlan`) |
 | L3 routing | OSPF, IS-IS, eBGP, ECMP, route policy | FRR in host namespaces |
 | L3.5 tenancy | VRFs, overlapping prefixes, route leaking | Linux VRF, FRR VRF instances |
 | L4–7 service | NAT/firewall/service chain/anycast | iptables/nftables, server processes |
@@ -51,6 +51,20 @@ earlier design and add routing, tenancy, or a link-failure model on top.
 | D10 | Service chain | firewall, NAT, tenant policy | 6 / 5 | medium |
 | D11 | IPv6 dual-stack | OSPFv3/BGP, anycast failover | 6 / 5 | medium |
 | D12 | Chaos overlay | fault, interruption, cleanup | any | cross-cutting |
+
+### 2.1.1 Implemented scenario files
+
+| Design | Scenario file | Status |
+|---|---|---|
+| D04 | `vlan-ovs.json`, `multi-tenant-ovs.json` | implemented, rootless OVS |
+| D04/C4 | `multi-tenant-fault-ovs.json` | implemented, trunk fault/recovery |
+| D01 (L2 variant) | `clos-l2-ovs.json` | implemented, redundant OVS + STP |
+| D02/D03 routing partial | `ospf-ovs.json` | implemented, OSPF over OVS |
+| D06a | `dual-home-ovs.json` | implemented, active-backup failover |
+| D12 | failure steps in the OVS scenarios | partial |
+
+The remaining D01 L3, D02, D03, D05, D06b, D07–D11 designs are specified below
+and tracked in `ROADMAP.md`.
 
 ---
 
@@ -90,7 +104,7 @@ checked, not just one sampled pair.
 
 | Mechanism | Isolation | Overlapping addresses | Scale | Runner feasibility |
 |---|---|---|---|---|
-| VLAN per tenant | L2 broadcast isolation | Only with separate L3 gateways | 4094 VLANs, bridge limits | **Supported today** via `bridge vlan` |
+| VLAN per tenant | L2 broadcast isolation | Only with separate L3 gateways | 4094 VLANs, bridge limits | **Supported today** via OVS `tag`/`trunks` (and legacy `bridge vlan`) |
 | VRF-lite | L3 routing-table isolation | Yes | one VRF per tenant per router | **Prototype**; Linux VRF + FRR |
 | VRF + VLAN | L2 and L3 isolation | Yes | good for campus/PE | Prototype |
 | VXLAN VNI | L2 overlay isolation | Yes | high, but MTU/encap overhead | **Prototype**; kernel VXLAN + static FDB |
@@ -105,8 +119,8 @@ checked, not just one sampled pair.
 |---|---|---|---|
 | Single link | any | partition | supported |
 | Parallel links | leaf pair / dual-homed host | one link survives | supported; host bond needed |
-| Active-backup bond | dual-homed host to two bridges | automatic failover | feasible with `bonding` module |
-| LACP bond | dual-homed host to one logical switch | graceful member loss | needs LACP-capable switch; LinuxBridge cannot peer |
+| Active-backup bond | dual-homed host to two OVS bridges/ports | automatic failover | **verified** in rootless Podman (`dual-home-ovs`) |
+| LACP bond | dual-homed host to one logical OVS switch | graceful member loss | OVS supports LACP; host-bond combination not yet tested |
 | Ring | routers/switches | alternate path if one cut | supported |
 | Full mesh | core/leaf | rich ECMP, expensive cabling | supported at small scale |
 | Torus | regular high-radix fabric | path diversity | supported at small scale |
@@ -120,6 +134,10 @@ checked, not just one sampled pair.
 
 **Purpose.** Modern data-centre fabric: two spines, several leaves, servers
 attached to leaves, eBGP between leaves and spines, ECMP to server prefixes.
+
+**Implementation status.** The redundant L2 fabric variant is implemented as
+`clos-l2-ovs.json` with four OVS switches and STP. The L3 eBGP/ECMP variant
+remains to be built.
 
 ```text
         sp1 =============== sp2
@@ -369,8 +387,9 @@ the capability boundary explicit.
 **Acceptance.** Active-backup failover under 2 s with no permanent loss; LACP
 either passes with a LACP-capable datapath or is explicitly marked unsupported.
 
-**Feasibility.** D06a high; D06b blocked by LinuxBridge. This distinction is
-important: do not advertise LACP support that the runner cannot provide.
+**Feasibility.** D06a is implemented and verified rootless. D06b is not yet
+verified: OVS supports LACP, but the host bond and OVS port configuration need
+a dedicated experiment before claiming support.
 
 **Effort:** small for D06a; medium for D06b with OVS.
 

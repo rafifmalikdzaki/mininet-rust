@@ -77,9 +77,13 @@ disposable host or VM; a privileged container is not a security sandbox.
 $ sh scripts/mnr-container.sh --topo single,3 --test pingall
 ```
 
-Rootless podman/docker can map container root into a user namespace. Network
-namespace support depends on the runtime and host; privileged containers are
-not a security boundary for untrusted code. See [DECISIONS.md D25](docs/migration/DECISIONS.md).
+Rootless Podman/docker map container root into a user namespace. The wrapper
+uses a real OVS switch (`ovs,failMode=standalone`) by default, with no
+controller listener. The host must already provide the OVS kernel module — a
+rootless container cannot load it. Network namespace support still depends on
+the runtime and host; privileged containers are not a security boundary for
+untrusted code. See [DECISIONS.md D25](docs/migration/DECISIONS.md) and the
+[real-switch report](docs/research/REAL_SWITCHES_ROOTLESS.md).
 
 ## How it compares
 
@@ -110,6 +114,8 @@ Options:
 
 - [Ship guide](RUST.md) · [Decision log D1–D26](docs/migration/DECISIONS.md)
 - [Technical validation report](docs/research/TECHNICAL_REPORT.md) — evidence, failure paths, limits
+- [Real OVS switches + rootless](docs/research/REAL_SWITCHES_ROOTLESS.md) — OVS, Podman, benchmarks, runbook
+- [Roadmap](ROADMAP.md) — implemented designs, next scenarios, rootless requirements
 - [Scenario complexity map](docs/research/SCENARIO_MAP.md) — plan → connectivity → protocols → faults → scale → agents
 - [Topology design catalogue](docs/research/TOPOLOGY_DESIGNS.md) — 12 designs: Clos, hierarchy, VRF/VXLAN tenancy, bonding, rings, hub-spoke, torus, service chains, IPv6, chaos
 - [Research plans](docs/research/RESEARCH_PLANS.md) — ten programmes across all features
