@@ -81,9 +81,15 @@ root-tests-docker:
 diff spec:
     sudo sh scripts/diff_topology.sh {{spec}}
 
-# benchmark ladder, Python mn vs mnr (needs root)
+# benchmark ladder, Python mn vs mnr (needs root; real OVS by default)
 bench runs="5":
     sudo env BENCH_RUNS={{runs}} sh scripts/bench_scenarios.sh
+
+# rootless benchmark ladder inside the mnr-rootless image (build/load it first)
+bench-rootless runs="3":
+    podman run --rm --privileged --network none -v "{{root}}:/w" -w /w \
+        -e MN_RUST_BIN=/usr/local/bin/mnr -e BENCH_RUNS={{runs}} \
+        mnr-rootless:latest sh scripts/bench_scenarios.sh
 
 # full privileged one-shot (tests + diff ladder + summary)
 root-tests:
@@ -97,9 +103,17 @@ research-build:
 
 # run one preset: just research bgp bgp-001
 # scenarios: ospf isis bgp vlan multi-tenant multi-tenant-fault
+# real-switch variants: vlan-ovs multi-tenant-ovs multi-tenant-fault-ovs
+#                      ospf-ovs dual-home-ovs clos-l2-ovs
 research scenario="ospf" run="research-run":
     mkdir -p "{{root}}/runs"
     docker run --rm --init --privileged --network none \
+        -v "{{root}}/runs:/runs" {{research_image}} "/scenarios/{{scenario}}.json" "/runs/{{run}}"
+
+# rootless research run (image must be built/loaded into Podman)
+research-rootless scenario="ospf" run="research-run":
+    mkdir -p "{{root}}/runs"
+    podman run --rm --init --privileged --network none \
         -v "{{root}}/runs:/runs" {{research_image}} "/scenarios/{{scenario}}.json" "/runs/{{run}}"
 
 # live read-only monitor for a completed or running experiment

@@ -32,6 +32,17 @@ BENCH_RUNS=${BENCH_RUNS:-5}
 BENCH_SWITCH=${BENCH_SWITCH:-ovs,failMode=standalone}
 BENCH_OUT=${BENCH_OUT:-}
 
+case $BENCH_RUNS in
+    '' | *[!0-9]*)
+        echo "bench_scenarios: BENCH_RUNS must be a positive integer (got '$BENCH_RUNS')" >&2
+        exit 2
+        ;;
+esac
+if [ "$BENCH_RUNS" -lt 1 ]; then
+    echo "bench_scenarios: BENCH_RUNS must be at least 1" >&2
+    exit 2
+fi
+
 MN_BIN=""
 for cand in "${MN_RUST_BIN:-}" "$REPO_ROOT/target/release/mnr" "$REPO_ROOT/target/debug/mnr"; do
     if [ -n "$cand" ] && [ -x "$cand" ]; then MN_BIN=$cand; break; fi
