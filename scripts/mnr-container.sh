@@ -76,6 +76,20 @@ case " $* " in
     *" --switch ovs"* | *" --switch=ovs"*) set -- "$@" --nolistenport ;;
 esac
 
+# Fail before starting a container if the host cannot provide the OVS kernel
+# datapath. The container cannot load the module itself.
+case " $* " in
+    *" --switch ovs"* | *" --switch=ovs"* | *" --switch default"* | *" --switch=default"*)
+        if ! grep -q '^openvswitch ' /proc/modules 2>/dev/null; then
+            log "ERROR: OVS switch requested, but the host kernel module is not loaded."
+            log "  Run on the host: sudo modprobe openvswitch"
+            log "  Persist with: echo openvswitch | sudo tee /etc/modules-load.d/openvswitch.conf"
+            log "  Or use --switch lxbr for the LinuxBridge fallback."
+            exit 3
+        fi
+        ;;
+esac
+
 # --- runtime flags ------------------------------------------------------------
 # --privileged is confined to the container's user namespace in rootless
 # mode: it grants CAP_NET_ADMIN *there*, never on the host.
