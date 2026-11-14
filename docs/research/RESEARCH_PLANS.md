@@ -6,6 +6,9 @@ run on one Linux host, metrics, and a concrete deliverable. None assumes an
 embedded AI model: the AI-facing surface is the MCP tool contract and the
 external agent that drives it.
 
+Concrete designs for these programmes are in
+[Topology design catalogue](TOPOLOGY_DESIGNS.md).
+
 ## Portfolio at a glance
 
 | Plan | Programme | Features | Horizon | Depends on |

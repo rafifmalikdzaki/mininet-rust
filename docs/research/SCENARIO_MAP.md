@@ -8,6 +8,10 @@ The repository has no embedded language model. “AI features” here means the
 Model Context Protocol (MCP) server and the agent-facing tool contract; model
 behaviour is supplied by the external client.
 
+For concrete multi-site, spine-leaf, VRF, VXLAN, bonding, ring, hub-spoke, torus,
+service-chain, and IPv6 designs with test assertions, see
+[Topology design catalogue](TOPOLOGY_DESIGNS.md).
+
 ## Complexity ladder
 
 | Level | Question | Representative topology | Primary feature exercised | Evidence |

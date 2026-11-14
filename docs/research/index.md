@@ -9,6 +9,7 @@ increasing complexity, and a portfolio of research plans.
 
 TECHNICAL_REPORT
 SCENARIO_MAP
+TOPOLOGY_DESIGNS
 RESEARCH_PLANS
 ```
 
@@ -18,6 +19,7 @@ RESEARCH_PLANS
 |---|---|
 | Know what was tested and what remains unproven | [Technical report](TECHNICAL_REPORT.md) |
 | Choose a scenario by complexity or research theme | [Scenario map](SCENARIO_MAP.md) |
+| Design a complex topology, routing scheme, or tenant layout | [Topology design catalogue](TOPOLOGY_DESIGNS.md) |
 | Plan the next experiment or a longer programme | [Research plans](RESEARCH_PLANS.md) |
 | Run the workbench | `example/README.md` and `example/tui/README.md` |
 | Understand the MCP agent surface | [MCP documentation](../mcp.rst) |
