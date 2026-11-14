@@ -82,6 +82,7 @@ ready-made scenario.
 | C3.3 | Trunk carries all tenants | VLANs 10/20/30 cross sites without leaking | multi-tenant preset |
 | C3.4 | Policy/ACL matrix | allow/deny matches intent for every ordered pair | new; requires ACL steps |
 | C3.5 | Tenant scale-out | 10+ tenants, no VLAN/port collision, artifact volume bounded | new |
+| C3.6 | L3 VRF-lite separation | same tenant across sites passes; cross-tenant fails; per-VRF tables | `vrf-lite` (2 tenants) |
 
 ### C4 — Fault and recovery
 

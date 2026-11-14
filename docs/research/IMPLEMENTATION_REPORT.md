@@ -507,8 +507,8 @@ The full status is maintained in `ROADMAP.md`. Summary:
 
 Immediate next increments:
 
-1. D01 Clos eBGP.
-2. D03 VRF-lite.
+1. Expand D01 to 4 leaves/8 servers and a leaf-failure matrix.
+2. Expand D03 to four tenants and per-VRF FRR/shared-service leaks.
 3. Chaos signal/daemon-kill suite.
 4. OVS switch-readiness checks inside scenarios (host-module preflight is done).
 5. Five-sample release benchmark and scale run.

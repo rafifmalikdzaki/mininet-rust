@@ -60,7 +60,7 @@ earlier design and add routing, tenancy, or a link-failure model on top.
 | D04/C4 | `multi-tenant-fault-ovs.json` | implemented, trunk fault/recovery |
 | D01 (L2 variant) | `clos-l2-ovs.json` | implemented, redundant OVS + STP |
 | D01 (L3 variant) | `clos-ebgp.json` | implemented (reduced), eBGP + ECMP + uplink cut |
-| D02/D03 routing partial | `ospf-ovs.json` | implemented, OSPF over OVS |
+| D02 routing partial | `ospf-ovs.json` | implemented, OSPF over OVS |
 | D06a | `dual-home-ovs.json` | implemented, active-backup failover |
 | D12 | failure steps in the OVS and ring scenarios | partial |
 | D07 | `ring-isis.json` | implemented, direct router links |
