@@ -23,6 +23,8 @@ tagged.
   - `clos-l2-ovs` — two-spine/two-leaf OVS fabric with STP.
   - `ring-isis` — six-router ring with chords, IS-IS, ECMP, and a link cut.
 - `clos-ebgp` — L3 spine/leaf eBGP, two ECMP next hops, and an uplink cut.
+- `vrf-lite` — two Linux VRFs per PE, overlapping tenant prefixes, and a
+  positive/negative isolation matrix.
 - OVS-based benchmark defaults and a rootless three-sample benchmark report.
 - Real-switch/rootless validation report and a project roadmap covering
   D01–D12 designs, 30/60/90-day workstreams, and acceptance gates.

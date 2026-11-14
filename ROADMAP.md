@@ -17,6 +17,7 @@ a benchmark, and a report.
 |---|---|
 | Real OVS switch per scenario | `vlan-ovs`, `multi-tenant-ovs`, `multi-tenant-fault-ovs`, `ospf-ovs`, `dual-home-ovs`, `clos-l2-ovs` |
 | L3 Clos/eBGP | `clos-ebgp`: 2 spines, 2 leaves, 2 servers, ECMP, uplink cut |
+| VRF-lite tenancy | `vrf-lite`: 2 PEs, 2 tenants, overlapping prefixes, negative matrix |
 | Ring/chord routing | `ring-isis`: six routers, 3 chords, ECMP, single-link cut |
 | Rootless Podman | `mnr` `single,3` 6/6; research scenarios; rootless MCP lifecycle; artifacts owned by invoking user |
 | OVS VLAN isolation | same-VLAN pass, cross-VLAN fail |
@@ -34,7 +35,7 @@ a benchmark, and a report.
 |---|---|---|
 | D01 Clos L3 eBGP | **implemented (reduced)** — `clos-ebgp` (2 spines, 2 leaves, 2 servers, ECMP, uplink cut) | expand to 4 leaves/8 servers and leaf failure |
 | D02 three-tier hierarchy | planned | core/agg/access, OSPF areas, VLAN access/trunk |
-| D03 VRF-lite tenancy | planned | prototype Linux VRF + FRR on OVS-attached PEs |
+| D03 VRF-lite tenancy | **implemented (reduced)** — `vrf-lite` (2 PEs, 2 tenants) | expand to 4 tenants, shared-service leak, OVS trunks |
 | D04 multi-site VLAN | **implemented** (OVS) | add independent per-tenant fault and restore tests |
 | D05 VXLAN overlay | planned | two-VTEP kernel VXLAN smoke, then tenant overlay |
 | D06 dual-homed links | **partial** — active-backup implemented | OVS LACP experiment; document reference platform |
@@ -76,8 +77,8 @@ complete, teardown leaves no namespaces/veths/FRR processes.
 
 ### P2 — Tenancy
 
-1. **D03 VRF-lite** — two PEs, four tenants, overlapping `10.20.0.0/24`;
-   per-VRF route tables; 8/8 same-tenant and 48/48 cross-tenant checks.
+1. **D03 VRF-lite** — reduced version implemented as `vrf-lite`; expand to four
+   tenants and add the 48-pair cross-tenant matrix.
 2. **Shared-service leak** — deliberate route leak into all VRFs, then revert.
 3. **D10 service chain** — tenant-aware firewall allow/deny matrix and NAT.
 4. **Tenant scale** — 10 tenants, artifact-size and runtime budget.
@@ -131,7 +132,7 @@ matrix can detect a misconfiguration, and per-VRF evidence is retained.
 ### First 30 days
 
 - D01 Clos eBGP is now implemented (reduced); focus on expansion and failure coverage;
-- D03 VRF-lite prototype;
+- D03 VRF-lite is now implemented in reduced form; expand tenant coverage;
 - chaos: signals and daemon kill;
 - OVS preflight and wrapper `--switch=ovs` test are done; extend to a shell regression test.
 - update benchmark to 5 samples with release build.

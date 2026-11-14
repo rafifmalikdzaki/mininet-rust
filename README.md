@@ -63,8 +63,8 @@ $ mnr --topo single,3 --switch lxbr   # kernel LinuxBridge instead of OVS
 ## Research experiments
 
 [`example/`](example/README.md) provides OSPF, IS-IS, BGP, VLAN, multi-tenant,
-rootless OVS, active-backup, L2 leaf-spine/STP, L3 Clos/eBGP, ring/ECMP, and
-trunk-fault presets using FRRouting and the Rust network core. Experiments retain commands,
+rootless OVS, active-backup, L2 leaf-spine/STP, L3 Clos/eBGP, VRF-lite
+tenancy, ring/ECMP, and trunk-fault presets using FRRouting and the Rust network core. Experiments retain commands,
 protocol state and per-node telemetry. OVS is the default for scenario switch
 nodes; LinuxBridge remains available explicitly. The
 [research monitor](example/tui/README.md) displays live run state in a

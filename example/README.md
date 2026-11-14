@@ -44,6 +44,7 @@ Choose a file under `/scenarios/` in the container:
 | `clos-l2-ovs.json` | Redundant leaf-spine OVS fabric with STP |
 | `ring-isis.json` | Six-router ring with chords, IS-IS, ECMP, and a link cut |
 | `clos-ebgp.json` | L3 leaf/spine eBGP, ECMP, and an uplink failure |
+| `vrf-lite.json` | Two PEs, two tenants, overlapping prefixes, VRF isolation |
 | `multi-tenant.json` | Three sites and three isolated tenants using overlapping addresses |
 | `multi-tenant-fault.json` | Multi-tenant topology with trunk failure and recovery |
 

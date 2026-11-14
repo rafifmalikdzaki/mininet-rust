@@ -31,6 +31,7 @@ Verified outcomes:
 | Redundant leaf-spine | 4 OVS switches, STP, full reachability passed |
 | Ring/chord IS-IS | 6 routers, 9 links, adjacency, ECMP ping, link cut passed |
 | L3 Clos/eBGP | 2 spines, 2 leaves, 2 servers; ECMP and uplink cut passed |
+| VRF-lite | 2 PEs, 2 tenants, overlapping prefixes; positive/negative matrix passed |
 | Rootless MCP lifecycle | build/start/ping 2/2/stop/release passed |
 | Rootless benchmark | 6 topologies × 3 samples, 12/12 cells 0% loss |
 | Workspace tests | 447 passed, 0 failed, 29 ignored (root suite separately 29/29) |
@@ -146,6 +147,7 @@ and loaded with `docker save ... | podman load`.
 | `dual-home-ovs.json` | 3 / 3 / 5 | active-backup bond failover |
 | `clos-l2-ovs.json` | 8 / 8 / 7 | redundant leaf-spine with STP |
 | `clos-ebgp.json` | 6 / 6 / 12 | L3 leaf/spine eBGP, ECMP, uplink cut |
+| `vrf-lite.json` | 6 / 6 / 12 | Linux VRF isolation, overlapping tenants |
 | `ring-isis.json` | 6 / 9 / 12 | ring + chords, IS-IS, ECMP, link cut |
 
 The legacy `vlan`, `multi-tenant`, and `multi-tenant-fault` scenarios remain
@@ -266,6 +268,22 @@ address (router loopback rather than server), which was fixed by pinging from
 `h1`. This is D01 in reduced form; the catalogue's 4-leaf/8-server expansion
 and leaf-failure matrix remain.
 
+### 4.9 VRF-lite tenancy (`vrf-lite`)
+
+Reduced D03:
+
+- two PE routers, each with two Linux VRFs (`t1` table 101, `t2` table 102);
+- two hosts per tenant, one at each site;
+- both tenants intentionally use `10.20.1.0/24` and `10.20.2.0/24`;
+- per-VRF static routes over separate point-to-point links;
+- a1→a2 and b1→b2 pass;
+- a1→b1, a1→b2, and b1→a1 fail with ping exit 1;
+- per-VRF tables are inspected directly.
+
+Result: **success**, 12 steps. This validates the VRF primitive and the negative
+matrix. FRR inside VRFs, four tenants, and shared-service leaks remain for the
+full D03 design.
+
 ## 5. Benchmarks
 
 ### 5.1 Environment
@@ -327,7 +345,7 @@ use is positional: `just bench-rootless 1`.
 | MCP rootless live | custom graph 2/2, 0% loss |
 | Python bindings | 5/5 non-root smoke |
 | Differential topology ladder | 6/6 MATCH |
-| OVS/live scenarios | 8/8 implemented routed/tenant scenarios pass rootless |
+| OVS/live scenarios | 9/9 implemented routed/tenant scenarios pass rootless |
 | Docs | Sphinx build succeeds, 0 warnings |
 | Shell syntax | `sh -n` clean |
 | Docker fallback | OVS `single,3` 6/6 |
@@ -476,7 +494,7 @@ The full status is maintained in `ROADMAP.md`. Summary:
 |---|---|---|
 | D01 Clos L3 eBGP | reduced implementation | 4 leaves/8 servers, leaf failure |
 | D02 three-tier | planned | OSPF areas, summaries, VLAN access |
-| D03 VRF-lite | planned | Linux VRF + FRR, 8/8 and 48/48 matrices |
+| D03 VRF-lite | reduced implementation | 4 tenants, per-VRF FRR, shared-service leak |
 | D04 multi-site VLAN | implemented | add independent per-tenant faults |
 | D05 VXLAN | planned | two-VTEP smoke, then tenant overlay |
 | D06 dual-home | active-backup implemented | OVS LACP decision |

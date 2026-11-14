@@ -64,8 +64,9 @@ earlier design and add routing, tenancy, or a link-failure model on top.
 | D06a | `dual-home-ovs.json` | implemented, active-backup failover |
 | D12 | failure steps in the OVS and ring scenarios | partial |
 | D07 | `ring-isis.json` | implemented, direct router links |
+| D03 | `vrf-lite.json` | implemented (reduced), Linux VRF isolation |
 
-The remaining full D01 scale-out, D02, D03, D05, D06b, and D08–D11 designs are
+The remaining full D01 scale-out, D02, full D03, D05, D06b, and D08–D11 designs are
 specified below and tracked in `ROADMAP.md`.
 
 ---
@@ -112,8 +113,9 @@ checked, not just one sampled pair.
 | VXLAN VNI | L2 overlay isolation | Yes | high, but MTU/encap overhead | **Prototype**; kernel VXLAN + static FDB |
 | EVPN/VXLAN | overlay with control plane | Yes | high | Not implemented; large project |
 
-**Recommendation:** implement D04 first (VLAN isolation, low risk), then D03
-(VRF-lite, high research value), then D05 (VXLAN, highest complexity).
+**Recommendation:** D04 and a reduced D03 are implemented. Next expand D03 to
+four tenants and add per-VRF FRR/shared-service leak tests; D05 remains the
+highest-complexity overlay step.
 
 ## 3.3 Link and layer choices
 
@@ -786,7 +788,7 @@ D12 is a fault-injection suite over the other scenarios, not a single JSON file.
 | No `continue_on_failure` | multi-fault designs | runner option, or split scenarios |
 | No link params in scenario schema | D02/D05/D07/D09 impairment | add `tc` steps or schema support |
 | No LACP on LinuxBridge | D06b | OVS or external switch |
-| VRF/FRR integration unproven | D03 | isolated prototype first |
+| Per-VRF FRR and shared-service leak unproven | D03 expansion | add FRR VRF instances and route-leak tests |
 | VXLAN kernel support unproven | D05 | minimal two-VTEP smoke test |
 | IPv4-oriented telemetry | D11 | add IPv6 probes |
 | No summary matrix artifact | all | generate machine-readable results |
