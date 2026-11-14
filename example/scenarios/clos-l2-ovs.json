@@ -1,0 +1,37 @@
+{
+  "name": "clos-l2-ovs",
+  "switch": "ovs,failMode=standalone",
+  "nodes": [
+    {"name": "sp1", "kind": "switch"},
+    {"name": "sp2", "kind": "switch"},
+    {"name": "lf1", "kind": "switch"},
+    {"name": "lf2", "kind": "switch"},
+    {"name": "h1", "kind": "host"},
+    {"name": "h2", "kind": "host"},
+    {"name": "h3", "kind": "host"},
+    {"name": "h4", "kind": "host"}
+  ],
+  "links": [
+    {"a": "lf1", "b": "sp1", "port_a": 1, "port_b": 1},
+    {"a": "lf1", "b": "sp2", "port_a": 2, "port_b": 1},
+    {"a": "lf2", "b": "sp1", "port_a": 1, "port_b": 2},
+    {"a": "lf2", "b": "sp2", "port_a": 2, "port_b": 2},
+    {"a": "lf1", "b": "h1", "port_a": 3, "port_b": 0},
+    {"a": "lf1", "b": "h2", "port_a": 4, "port_b": 0},
+    {"a": "lf2", "b": "h3", "port_a": 3, "port_b": 0},
+    {"a": "lf2", "b": "h4", "port_a": 4, "port_b": 0}
+  ],
+  "steps": [
+    {
+      "node": "sp1",
+      "command": "set -e; for b in sp1 sp2 lf1 lf2; do ovs-vsctl set bridge $b stp_enable=true; done",
+      "timeout_secs": 20
+    },
+    {"node": "h1", "command": "ip addr flush dev h1-eth0; ip addr add 10.30.0.1/24 dev h1-eth0; ip link set h1-eth0 up", "timeout_secs": 10},
+    {"node": "h2", "command": "ip addr flush dev h2-eth0; ip addr add 10.30.0.2/24 dev h2-eth0; ip link set h2-eth0 up", "timeout_secs": 10},
+    {"node": "h3", "command": "ip addr flush dev h3-eth0; ip addr add 10.30.0.3/24 dev h3-eth0; ip link set h3-eth0 up", "timeout_secs": 10},
+    {"node": "h4", "command": "ip addr flush dev h4-eth0; ip addr add 10.30.0.4/24 dev h4-eth0; ip link set h4-eth0 up", "timeout_secs": 10},
+    {"node": "h1", "command": "ping -c 1 -W 2 10.30.0.2 && ping -c 1 -W 2 10.30.0.3 && ping -c 1 -W 2 10.30.0.4", "retry_secs": 90, "timeout_secs": 10},
+    {"node": "h4", "command": "ping -c 1 -W 2 10.30.0.1 && ping -c 1 -W 2 10.30.0.2 && ping -c 1 -W 2 10.30.0.3", "retry_secs": 30, "timeout_secs": 10}
+  ]
+}
