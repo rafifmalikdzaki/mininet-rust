@@ -1,0 +1,302 @@
+{
+  "name": "multi-tenant-fault-ovs",
+  "switch": "ovs,failMode=standalone",
+  "nodes": [
+    {
+      "name": "s1",
+      "kind": "switch"
+    },
+    {
+      "name": "s2",
+      "kind": "switch"
+    },
+    {
+      "name": "s3",
+      "kind": "switch"
+    },
+    {
+      "name": "a1",
+      "kind": "host"
+    },
+    {
+      "name": "a2",
+      "kind": "host"
+    },
+    {
+      "name": "a3",
+      "kind": "host"
+    },
+    {
+      "name": "b1",
+      "kind": "host"
+    },
+    {
+      "name": "b2",
+      "kind": "host"
+    },
+    {
+      "name": "b3",
+      "kind": "host"
+    },
+    {
+      "name": "c1",
+      "kind": "host"
+    },
+    {
+      "name": "c2",
+      "kind": "host"
+    },
+    {
+      "name": "c3",
+      "kind": "host"
+    }
+  ],
+  "links": [
+    {
+      "a": "a1",
+      "b": "s1",
+      "port_a": 0,
+      "port_b": 1
+    },
+    {
+      "a": "b1",
+      "b": "s1",
+      "port_a": 0,
+      "port_b": 2
+    },
+    {
+      "a": "c1",
+      "b": "s1",
+      "port_a": 0,
+      "port_b": 3
+    },
+    {
+      "a": "a2",
+      "b": "s2",
+      "port_a": 0,
+      "port_b": 1
+    },
+    {
+      "a": "b2",
+      "b": "s2",
+      "port_a": 0,
+      "port_b": 2
+    },
+    {
+      "a": "c2",
+      "b": "s2",
+      "port_a": 0,
+      "port_b": 3
+    },
+    {
+      "a": "a3",
+      "b": "s3",
+      "port_a": 0,
+      "port_b": 1
+    },
+    {
+      "a": "b3",
+      "b": "s3",
+      "port_a": 0,
+      "port_b": 2
+    },
+    {
+      "a": "c3",
+      "b": "s3",
+      "port_a": 0,
+      "port_b": 3
+    },
+    {
+      "a": "s1",
+      "b": "s2",
+      "port_a": 4,
+      "port_b": 4
+    },
+    {
+      "a": "s2",
+      "b": "s3",
+      "port_a": 5,
+      "port_b": 4
+    }
+  ],
+  "steps": [
+    {
+      "node": "s1",
+      "command": "set -e; ovs-vsctl set port s1-eth1 vlan_mode=access tag=10; ovs-vsctl set port s1-eth2 vlan_mode=access tag=20; ovs-vsctl set port s1-eth3 vlan_mode=access tag=30; ovs-vsctl set port s1-eth4 vlan_mode=trunk trunks=10,20,30",
+      "timeout_secs": 30
+    },
+    {
+      "node": "s2",
+      "command": "set -e; ovs-vsctl set port s2-eth1 vlan_mode=access tag=10; ovs-vsctl set port s2-eth2 vlan_mode=access tag=20; ovs-vsctl set port s2-eth3 vlan_mode=access tag=30; ovs-vsctl set port s2-eth4 vlan_mode=trunk trunks=10,20,30; ovs-vsctl set port s2-eth5 vlan_mode=trunk trunks=10,20,30",
+      "timeout_secs": 30
+    },
+    {
+      "node": "s3",
+      "command": "set -e; ovs-vsctl set port s3-eth1 vlan_mode=access tag=10; ovs-vsctl set port s3-eth2 vlan_mode=access tag=20; ovs-vsctl set port s3-eth3 vlan_mode=access tag=30; ovs-vsctl set port s3-eth4 vlan_mode=trunk trunks=10,20,30",
+      "timeout_secs": 30
+    },
+    {
+      "node": "a1",
+      "command": "set -e; ip addr flush dev a1-eth0; ip addr add 10.20.0.1/24 dev a1-eth0; ip addr add 10.20.0.11/32 dev a1-eth0; ip link set a1-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "a2",
+      "command": "set -e; ip addr flush dev a2-eth0; ip addr add 10.20.0.2/24 dev a2-eth0; ip addr add 10.20.0.12/32 dev a2-eth0; ip link set a2-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "a3",
+      "command": "set -e; ip addr flush dev a3-eth0; ip addr add 10.20.0.3/24 dev a3-eth0; ip addr add 10.20.0.13/32 dev a3-eth0; ip link set a3-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "b1",
+      "command": "set -e; ip addr flush dev b1-eth0; ip addr add 10.20.0.1/24 dev b1-eth0; ip addr add 10.20.0.21/32 dev b1-eth0; ip link set b1-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "b2",
+      "command": "set -e; ip addr flush dev b2-eth0; ip addr add 10.20.0.2/24 dev b2-eth0; ip addr add 10.20.0.22/32 dev b2-eth0; ip link set b2-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "b3",
+      "command": "set -e; ip addr flush dev b3-eth0; ip addr add 10.20.0.3/24 dev b3-eth0; ip addr add 10.20.0.23/32 dev b3-eth0; ip link set b3-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "c1",
+      "command": "set -e; ip addr flush dev c1-eth0; ip addr add 10.20.0.1/24 dev c1-eth0; ip addr add 10.20.0.31/32 dev c1-eth0; ip link set c1-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "c2",
+      "command": "set -e; ip addr flush dev c2-eth0; ip addr add 10.20.0.2/24 dev c2-eth0; ip addr add 10.20.0.32/32 dev c2-eth0; ip link set c2-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "c3",
+      "command": "set -e; ip addr flush dev c3-eth0; ip addr add 10.20.0.3/24 dev c3-eth0; ip addr add 10.20.0.33/32 dev c3-eth0; ip link set c3-eth0 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "a1",
+      "command": "ping -c 1 -W 2 10.20.0.2 && ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "a2",
+      "command": "ping -c 1 -W 2 10.20.0.1 && ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "a3",
+      "command": "ping -c 1 -W 2 10.20.0.1 && ping -c 1 -W 2 10.20.0.2",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "b1",
+      "command": "ping -c 1 -W 2 10.20.0.2 && ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "b2",
+      "command": "ping -c 1 -W 2 10.20.0.1 && ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "b3",
+      "command": "ping -c 1 -W 2 10.20.0.1 && ping -c 1 -W 2 10.20.0.2",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "c1",
+      "command": "ping -c 1 -W 2 10.20.0.2 && ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "c2",
+      "command": "ping -c 1 -W 2 10.20.0.1 && ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {
+      "node": "c3",
+      "command": "ping -c 1 -W 2 10.20.0.1 && ping -c 1 -W 2 10.20.0.2",
+      "retry_secs": 30,
+      "timeout_secs": 8
+    },
+    {"node":"a1","command":"ping -c 1 -W 2 10.20.0.12 && ping -c 1 -W 2 10.20.0.13","retry_secs":30,"timeout_secs":8},
+    {"node":"a2","command":"ping -c 1 -W 2 10.20.0.11","retry_secs":30,"timeout_secs":5},
+    {"node":"b1","command":"ping -c 1 -W 2 10.20.0.22 && ping -c 1 -W 2 10.20.0.23","retry_secs":30,"timeout_secs":8},
+    {"node":"b2","command":"ping -c 1 -W 2 10.20.0.21","retry_secs":30,"timeout_secs":5},
+    {"node":"c1","command":"ping -c 1 -W 2 10.20.0.32 && ping -c 1 -W 2 10.20.0.33","retry_secs":30,"timeout_secs":8},
+    {"node":"c2","command":"ping -c 1 -W 2 10.20.0.31","retry_secs":30,"timeout_secs":5},
+    {
+      "node": "a1",
+      "command": "for ip in 10.20.0.21 10.20.0.22 10.20.0.23 10.20.0.31 10.20.0.32 10.20.0.33; do ping -c 1 -W 2 $ip; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"tenant isolation check failed: $ip (ping exit $rc)\" >&2; exit 1; fi; done",
+      "timeout_secs": 20
+    },
+    {
+      "node": "b1",
+      "command": "for ip in 10.20.0.11 10.20.0.12 10.20.0.13 10.20.0.31 10.20.0.32 10.20.0.33; do ping -c 1 -W 2 $ip; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"tenant isolation check failed: $ip (ping exit $rc)\" >&2; exit 1; fi; done",
+      "timeout_secs": 20
+    },
+    {
+      "node": "c1",
+      "command": "for ip in 10.20.0.11 10.20.0.12 10.20.0.13 10.20.0.21 10.20.0.22 10.20.0.23; do ping -c 1 -W 2 $ip; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"tenant isolation check failed: $ip (ping exit $rc)\" >&2; exit 1; fi; done",
+      "timeout_secs": 20
+    },
+    {
+      "node": "s2",
+      "command": "ip link set dev s2-eth5 down",
+      "timeout_secs": 10
+    },
+    {
+      "node": "a1",
+      "command": "ping -c 1 -W 2 10.20.0.2 && { ping -c 1 -W 2 10.20.0.3; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"trunk fault check failed (ping exit $rc)\" >&2; exit 1; fi; }",
+      "timeout_secs": 8
+    },
+    {
+      "node": "b1",
+      "command": "ping -c 1 -W 2 10.20.0.2 && { ping -c 1 -W 2 10.20.0.3; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"trunk fault check failed (ping exit $rc)\" >&2; exit 1; fi; }",
+      "timeout_secs": 8
+    },
+    {
+      "node": "c1",
+      "command": "ping -c 1 -W 2 10.20.0.2 && { ping -c 1 -W 2 10.20.0.3; rc=$?; if [ \"$rc\" -ne 1 ]; then echo \"trunk fault check failed (ping exit $rc)\" >&2; exit 1; fi; }",
+      "timeout_secs": 8
+    },
+    {
+      "node": "s2",
+      "command": "ip link set dev s2-eth5 up",
+      "timeout_secs": 10
+    },
+    {
+      "node": "a1",
+      "command": "ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 5
+    },
+    {
+      "node": "b1",
+      "command": "ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 5
+    },
+    {
+      "node": "c1",
+      "command": "ping -c 1 -W 2 10.20.0.3",
+      "retry_secs": 30,
+      "timeout_secs": 5
+    }
+  ]
+}
