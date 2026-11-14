@@ -1,0 +1,33 @@
+{
+  "name": "dual-home-ovs",
+  "switch": "ovs,failMode=standalone",
+  "nodes": [
+    {"name": "s1", "kind": "switch"},
+    {"name": "h1", "kind": "host"},
+    {"name": "h2", "kind": "host"}
+  ],
+  "links": [
+    {"a": "h1", "b": "s1", "port_a": 0, "port_b": 1},
+    {"a": "h1", "b": "s1", "port_a": 1, "port_b": 2},
+    {"a": "h2", "b": "s1", "port_a": 0, "port_b": 3}
+  ],
+  "steps": [
+    {
+      "node": "h1",
+      "command": "set -e; ip addr flush dev h1-eth0; ip addr flush dev h1-eth1; ip link set h1-eth0 down; ip link set h1-eth1 down; ip link add bond0 type bond mode active-backup miimon 100; ip link set h1-eth0 master bond0; ip link set h1-eth1 master bond0; ip link set h1-eth0 up; ip link set h1-eth1 up; ip addr add 10.0.0.1/24 dev bond0; ip link set bond0 up",
+      "timeout_secs": 20
+    },
+    {"node": "h2", "command": "ip addr flush dev h2-eth0; ip addr add 10.0.0.2/24 dev h2-eth0; ip link set h2-eth0 up", "timeout_secs": 10},
+    {"node": "h1", "command": "ip -d link show bond0; ping -c 1 -W 2 -I bond0 10.0.0.2", "retry_secs": 20, "timeout_secs": 5},
+    {
+      "node": "h1",
+      "command": "set -e; active=$(ip -d link show bond0 | sed -n 's/.*active_slave \\([^ ]*\\).*/\\1/p'); test -n \"$active\"; ip link set \"$active\" down; sleep 2; new=$(ip -d link show bond0 | sed -n 's/.*active_slave \\([^ ]*\\).*/\\1/p'); test -n \"$new\"; test \"$new\" != \"$active\"; ping -c 1 -W 2 -I bond0 10.0.0.2",
+      "timeout_secs": 15
+    },
+    {
+      "node": "h1",
+      "command": "set -e; for p in h1-eth0 h1-eth1; do ip link set \"$p\" up; done; sleep 1; ping -c 1 -W 2 -I bond0 10.0.0.2",
+      "timeout_secs": 15
+    }
+  ]
+}

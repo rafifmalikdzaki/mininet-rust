@@ -1,0 +1,13 @@
+{
+  "name": "ospf-ovs",
+  "switch": "ovs,failMode=standalone",
+  "nodes": [{"name":"s1","kind":"switch"},{"name":"r1","kind":"host"},{"name":"r2","kind":"host"}],
+  "links": [{"a":"r1","b":"s1","port_a":0,"port_b":1},{"a":"r2","b":"s1","port_a":0,"port_b":2}],
+  "steps": [
+    {"node":"r1","command":"set -e; ip addr flush dev r1-eth0; ip addr add 10.0.12.1/30 dev r1-eth0; ip addr add 10.1.1.1/32 dev lo; ip link set lo up; ip link set r1-eth0 up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ospf-r1; mkdir -p $d /etc/frr/mnr-ospf-r1; : > /etc/frr/mnr-ospf-r1/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname r1\\nlog file %s/zebra-runtime.log\\n' \"$d\" > $d/zebra.conf; printf 'hostname r1\\nlog file %s/ospfd-runtime.log\\nrouter ospf\\n ospf router-id 1.1.1.1\\n network 10.0.12.0/30 area 0\\n network 10.1.1.1/32 area 0\\n' \"$d\" > $d/ospfd.conf; /usr/lib/frr/zebra -d -N mnr-ospf-r1 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/ospfd -d -N mnr-ospf-r1 -f $d/ospfd.conf -i $d/ospfd.pid -z $d/zserv.api >$d/ospfd.log 2>&1","timeout_secs":30},
+    {"node":"r2","command":"set -e; ip addr flush dev r2-eth0; ip addr add 10.0.12.2/30 dev r2-eth0; ip addr add 10.2.2.2/32 dev lo; ip link set lo up; ip link set r2-eth0 up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ospf-r2; mkdir -p $d /etc/frr/mnr-ospf-r2; : > /etc/frr/mnr-ospf-r2/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname r2\\nlog file %s/zebra-runtime.log\\n' \"$d\" > $d/zebra.conf; printf 'hostname r2\\nlog file %s/ospfd-runtime.log\\nrouter ospf\\n ospf router-id 2.2.2.2\\n network 10.0.12.0/30 area 0\\n network 10.2.2.2/32 area 0\\n' \"$d\" > $d/ospfd.conf; /usr/lib/frr/zebra -d -N mnr-ospf-r2 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/ospfd -d -N mnr-ospf-r2 -f $d/ospfd.conf -i $d/ospfd.pid -z $d/zserv.api >$d/ospfd.log 2>&1","timeout_secs":30},
+    {"node":"r1","command":"vtysh -N mnr-ospf-r1 -c 'show ip ospf neighbor' | grep Full","retry_secs":90,"timeout_secs":5},
+    {"node":"r1","command":"ip route show 10.2.2.2/32 | grep 'via 10.0.12.2' && ping -c 1 -W 2 -I 10.1.1.1 10.2.2.2","retry_secs":30,"timeout_secs":5},
+    {"node":"r2","command":"ip route show 10.1.1.1/32 | grep 'via 10.0.12.1' && ping -c 1 -W 2 -I 10.2.2.2 10.1.1.1","retry_secs":30,"timeout_secs":5}
+  ]
+}
