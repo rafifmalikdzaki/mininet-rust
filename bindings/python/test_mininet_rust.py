@@ -25,9 +25,9 @@ def test_nat_adds_nat0():
     assert "nat0-eth0" in net.links()
 
 
-def test_plan_json():
+def test_plan_dump():
     plan = mnr.plan("tree,2,2")
-    assert "nodes:" in plan and "tree" in plan.lower()
+    assert "=== topo ===" in plan and "tree" in plan.lower()
 
 
 def test_bad_topo_raises():

@@ -11,7 +11,7 @@
 //! net.cmd("h1", "ifconfig")
 //! net.stop()
 //!
-//! print(mnr.plan("single,3"))   # JSON plan, no root needed
+//! print(mnr.plan("single,3"))   # dry-run plan text, no root needed
 //! ```
 //!
 //! Thin layer over `mn-net` / `mn-topo` — all kernel work stays in Rust.
@@ -146,7 +146,8 @@ impl PyMininet {
     }
 }
 
-/// plan(spec, **opts) -> JSON string of the planned graph (no root needed).
+/// plan(spec, **opts) -> dry-run plan text (same sections as `mnr --dump`;
+/// no root needed).
 #[pyfunction]
 #[pyo3(signature = (spec, **_opts))]
 fn plan(spec: &str, _opts: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<String> {

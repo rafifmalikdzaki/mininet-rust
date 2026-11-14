@@ -22,7 +22,7 @@ install needed.
    print(net.cmd("h1", "ifconfig"))
    net.stop()
 
-   print(mnr.plan("single,3"))    # JSON plan, no root needed
+   print(mnr.plan("single,3"))    # dry-run plan text (same as mnr --dump)
 
 API: ``Mininet(topo, controller, link, switch, ipbase, nat)`` with
 ``build/start/stop/dump/links/plan_json/hosts/switches/pingall/ping/cmd``,
