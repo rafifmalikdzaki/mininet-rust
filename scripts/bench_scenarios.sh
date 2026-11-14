@@ -9,8 +9,8 @@
 #   BENCH_TOPOS   space-separated topo specs (default: the ladder below)
 #   BENCH_RUNS    timed runs per scenario per implementation (default 5,
 #                 plus 1 warmup)
-#   BENCH_SWITCH  switch spec for both sides (default: default; use lxbr in
-#                 containers without the OVS kernel datapath module)
+#   BENCH_SWITCH  switch spec for both sides (default: ovs,failMode=standalone;
+#                 use lxbr only where OVS is unavailable)
 #   MN_RUST_BIN   Rust binary (default target/release/mnr, then debug)
 #   BENCH_OUT     output markdown file (default: stdout only)
 #
@@ -29,7 +29,7 @@ fi
 
 BENCH_TOPOS=${BENCH_TOPOS:-"single,3 linear,4 linear,10 tree,2,2 tree,3,2 tree,3,3"}
 BENCH_RUNS=${BENCH_RUNS:-5}
-BENCH_SWITCH=${BENCH_SWITCH:-default}
+BENCH_SWITCH=${BENCH_SWITCH:-ovs,failMode=standalone}
 BENCH_OUT=${BENCH_OUT:-}
 
 MN_BIN=""
@@ -61,8 +61,8 @@ median() { printf '%s\n' "$@" | sort -n | awk -v n="$(printf '%s\n' "$@" | wc -l
 run_once() {
     impl=$1; spec=$2
     case $impl in
-        py) cmd="$PY_MN --topo $spec --switch $BENCH_SWITCH --controller none --test pingall" ;;
-        rs) cmd="$MN_BIN --topo $spec --switch $BENCH_SWITCH --controller none --test pingall" ;;
+        py) cmd="$PY_MN --topo $spec --switch $BENCH_SWITCH --controller none --test pingall --nolistenport" ;;
+        rs) cmd="$MN_BIN --topo $spec --switch $BENCH_SWITCH --controller none --test pingall --nolistenport" ;;
     esac
     t0=$(now_ns)
     # shellcheck disable=SC2086
@@ -109,7 +109,7 @@ echo "- date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "- host: $(uname -srm) | cpus: $(nproc) | $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
 echo "- python: $(python3 --version 2>&1) | rust binary: $MN_BIN ($($MN_BIN --version 2>/dev/null || echo '?'))"
 echo "- commit: $(git rev-parse --short HEAD 2>/dev/null || echo '?') branch: $(git branch --show-current 2>/dev/null || echo '?')"
-echo "- runs per cell: $BENCH_RUNS (+1 warmup), metric: wall time of '--topo SPEC --controller none --test pingall' (start+pingall+stop) and ping loss"
+echo "- switch: $BENCH_SWITCH | runs per cell: $BENCH_RUNS (+1 warmup), metric: wall time of '--topo SPEC --controller none --test pingall' (start+pingall+stop) and ping loss"
 echo
 echo "| scenario | nodes | impl | wall s median | wall s min | wall s max | ping loss |"
 echo "|---|---|---|---|---|---|---|"
