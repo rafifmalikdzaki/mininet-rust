@@ -69,6 +69,8 @@ root-tests-docker:
                 gcc libc6-dev >/dev/null 2>&1; \
             test -d /root/.cargo/bin || curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable >/dev/null 2>&1; \
             export PATH=$PATH:/root/.cargo/bin; \
+            cargo build -p mnexec --no-default-features; \
+            install -m 0755 "$CARGO_TARGET_DIR/debug/mnexec" /usr/local/bin/mnexec; \
             MN_RUST_ROOT_TESTS=1 cargo test --workspace --no-fail-fast \
                 -- --ignored --test-threads=1'
 
