@@ -1,0 +1,152 @@
+{
+  "name": "ring-isis",
+  "nodes": [
+    {
+      "name": "r1",
+      "kind": "host"
+    },
+    {
+      "name": "r2",
+      "kind": "host"
+    },
+    {
+      "name": "r3",
+      "kind": "host"
+    },
+    {
+      "name": "r4",
+      "kind": "host"
+    },
+    {
+      "name": "r5",
+      "kind": "host"
+    },
+    {
+      "name": "r6",
+      "kind": "host"
+    }
+  ],
+  "links": [
+    {
+      "a": "r1",
+      "b": "r2",
+      "port_a": 0,
+      "port_b": 0
+    },
+    {
+      "a": "r2",
+      "b": "r3",
+      "port_a": 1,
+      "port_b": 0
+    },
+    {
+      "a": "r3",
+      "b": "r4",
+      "port_a": 1,
+      "port_b": 0
+    },
+    {
+      "a": "r4",
+      "b": "r5",
+      "port_a": 1,
+      "port_b": 0
+    },
+    {
+      "a": "r5",
+      "b": "r6",
+      "port_a": 1,
+      "port_b": 0
+    },
+    {
+      "a": "r6",
+      "b": "r1",
+      "port_a": 1,
+      "port_b": 1
+    },
+    {
+      "a": "r1",
+      "b": "r4",
+      "port_a": 2,
+      "port_b": 2
+    },
+    {
+      "a": "r2",
+      "b": "r5",
+      "port_a": 2,
+      "port_b": 2
+    },
+    {
+      "a": "r3",
+      "b": "r6",
+      "port_a": 2,
+      "port_b": 2
+    }
+  ],
+  "steps": [
+    {
+      "node": "r1",
+      "command": "set -e; ip addr flush dev r1-eth0; ip addr add 10.0.12.1/30 dev r1-eth0; ip link set r1-eth0 up; ip addr flush dev r1-eth1; ip addr add 10.0.61.1/30 dev r1-eth1; ip link set r1-eth1 up; ip addr flush dev r1-eth2; ip addr add 10.0.14.1/30 dev r1-eth2; ip link set r1-eth2 up; ip addr add 10.1.1.1/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ring-r1; mkdir -p $d /etc/frr/mnr-ring-r1;  : > /etc/frr/mnr-ring-r1/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' r1 \"$d\" > $d/zebra.conf; printf 'hostname r1\\nlog file %s/isisd-runtime.log\\ninterface r1-eth0\\n ip router isis LAB\\n isis network point-to-point\\ninterface r1-eth1\\n ip router isis LAB\\n isis network point-to-point\\ninterface r1-eth2\\n ip router isis LAB\\n isis network point-to-point\\ninterface lo\\n ip router isis LAB\\n isis passive\\nrouter isis LAB\\n net 49.0001.0000.0000.0001.00\\n is-type level-2-only\\n lsp-gen-interval 1\\n' \"$d\" > $d/isisd.conf; /usr/lib/frr/zebra -d -N mnr-ring-r1 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/isisd -d -N mnr-ring-r1 -f $d/isisd.conf -i $d/isisd.pid -z $d/zserv.api >$d/isisd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "r2",
+      "command": "set -e; ip addr flush dev r2-eth0; ip addr add 10.0.12.2/30 dev r2-eth0; ip link set r2-eth0 up; ip addr flush dev r2-eth1; ip addr add 10.0.23.1/30 dev r2-eth1; ip link set r2-eth1 up; ip addr flush dev r2-eth2; ip addr add 10.0.25.1/30 dev r2-eth2; ip link set r2-eth2 up; ip addr add 10.1.1.2/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ring-r2; mkdir -p $d /etc/frr/mnr-ring-r2;  : > /etc/frr/mnr-ring-r2/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' r2 \"$d\" > $d/zebra.conf; printf 'hostname r2\\nlog file %s/isisd-runtime.log\\ninterface r2-eth0\\n ip router isis LAB\\n isis network point-to-point\\ninterface r2-eth1\\n ip router isis LAB\\n isis network point-to-point\\ninterface r2-eth2\\n ip router isis LAB\\n isis network point-to-point\\ninterface lo\\n ip router isis LAB\\n isis passive\\nrouter isis LAB\\n net 49.0001.0000.0000.0002.00\\n is-type level-2-only\\n lsp-gen-interval 1\\n' \"$d\" > $d/isisd.conf; /usr/lib/frr/zebra -d -N mnr-ring-r2 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/isisd -d -N mnr-ring-r2 -f $d/isisd.conf -i $d/isisd.pid -z $d/zserv.api >$d/isisd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "r3",
+      "command": "set -e; ip addr flush dev r3-eth0; ip addr add 10.0.23.2/30 dev r3-eth0; ip link set r3-eth0 up; ip addr flush dev r3-eth1; ip addr add 10.0.34.1/30 dev r3-eth1; ip link set r3-eth1 up; ip addr flush dev r3-eth2; ip addr add 10.0.36.1/30 dev r3-eth2; ip link set r3-eth2 up; ip addr add 10.1.1.3/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ring-r3; mkdir -p $d /etc/frr/mnr-ring-r3;  : > /etc/frr/mnr-ring-r3/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' r3 \"$d\" > $d/zebra.conf; printf 'hostname r3\\nlog file %s/isisd-runtime.log\\ninterface r3-eth0\\n ip router isis LAB\\n isis network point-to-point\\ninterface r3-eth1\\n ip router isis LAB\\n isis network point-to-point\\ninterface r3-eth2\\n ip router isis LAB\\n isis network point-to-point\\ninterface lo\\n ip router isis LAB\\n isis passive\\nrouter isis LAB\\n net 49.0001.0000.0000.0003.00\\n is-type level-2-only\\n lsp-gen-interval 1\\n' \"$d\" > $d/isisd.conf; /usr/lib/frr/zebra -d -N mnr-ring-r3 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/isisd -d -N mnr-ring-r3 -f $d/isisd.conf -i $d/isisd.pid -z $d/zserv.api >$d/isisd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "r4",
+      "command": "set -e; ip addr flush dev r4-eth0; ip addr add 10.0.34.2/30 dev r4-eth0; ip link set r4-eth0 up; ip addr flush dev r4-eth1; ip addr add 10.0.45.1/30 dev r4-eth1; ip link set r4-eth1 up; ip addr flush dev r4-eth2; ip addr add 10.0.14.2/30 dev r4-eth2; ip link set r4-eth2 up; ip addr add 10.1.1.4/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ring-r4; mkdir -p $d /etc/frr/mnr-ring-r4;  : > /etc/frr/mnr-ring-r4/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' r4 \"$d\" > $d/zebra.conf; printf 'hostname r4\\nlog file %s/isisd-runtime.log\\ninterface r4-eth0\\n ip router isis LAB\\n isis network point-to-point\\ninterface r4-eth1\\n ip router isis LAB\\n isis network point-to-point\\ninterface r4-eth2\\n ip router isis LAB\\n isis network point-to-point\\ninterface lo\\n ip router isis LAB\\n isis passive\\nrouter isis LAB\\n net 49.0001.0000.0000.0004.00\\n is-type level-2-only\\n lsp-gen-interval 1\\n' \"$d\" > $d/isisd.conf; /usr/lib/frr/zebra -d -N mnr-ring-r4 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/isisd -d -N mnr-ring-r4 -f $d/isisd.conf -i $d/isisd.pid -z $d/zserv.api >$d/isisd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "r5",
+      "command": "set -e; ip addr flush dev r5-eth0; ip addr add 10.0.45.2/30 dev r5-eth0; ip link set r5-eth0 up; ip addr flush dev r5-eth1; ip addr add 10.0.56.1/30 dev r5-eth1; ip link set r5-eth1 up; ip addr flush dev r5-eth2; ip addr add 10.0.25.2/30 dev r5-eth2; ip link set r5-eth2 up; ip addr add 10.1.1.5/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ring-r5; mkdir -p $d /etc/frr/mnr-ring-r5;  : > /etc/frr/mnr-ring-r5/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' r5 \"$d\" > $d/zebra.conf; printf 'hostname r5\\nlog file %s/isisd-runtime.log\\ninterface r5-eth0\\n ip router isis LAB\\n isis network point-to-point\\ninterface r5-eth1\\n ip router isis LAB\\n isis network point-to-point\\ninterface r5-eth2\\n ip router isis LAB\\n isis network point-to-point\\ninterface lo\\n ip router isis LAB\\n isis passive\\nrouter isis LAB\\n net 49.0001.0000.0000.0005.00\\n is-type level-2-only\\n lsp-gen-interval 1\\n' \"$d\" > $d/isisd.conf; /usr/lib/frr/zebra -d -N mnr-ring-r5 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/isisd -d -N mnr-ring-r5 -f $d/isisd.conf -i $d/isisd.pid -z $d/zserv.api >$d/isisd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "r6",
+      "command": "set -e; ip addr flush dev r6-eth0; ip addr add 10.0.56.2/30 dev r6-eth0; ip link set r6-eth0 up; ip addr flush dev r6-eth1; ip addr add 10.0.61.2/30 dev r6-eth1; ip link set r6-eth1 up; ip addr flush dev r6-eth2; ip addr add 10.0.36.2/30 dev r6-eth2; ip link set r6-eth2 up; ip addr add 10.1.1.6/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-ring-r6; mkdir -p $d /etc/frr/mnr-ring-r6;  : > /etc/frr/mnr-ring-r6/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' r6 \"$d\" > $d/zebra.conf; printf 'hostname r6\\nlog file %s/isisd-runtime.log\\ninterface r6-eth0\\n ip router isis LAB\\n isis network point-to-point\\ninterface r6-eth1\\n ip router isis LAB\\n isis network point-to-point\\ninterface r6-eth2\\n ip router isis LAB\\n isis network point-to-point\\ninterface lo\\n ip router isis LAB\\n isis passive\\nrouter isis LAB\\n net 49.0001.0000.0000.0006.00\\n is-type level-2-only\\n lsp-gen-interval 1\\n' \"$d\" > $d/isisd.conf; /usr/lib/frr/zebra -d -N mnr-ring-r6 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/isisd -d -N mnr-ring-r6 -f $d/isisd.conf -i $d/isisd.pid -z $d/zserv.api >$d/isisd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "r1",
+      "command": "vtysh -N mnr-ring-r1 -c 'show isis neighbor' | grep -i Up",
+      "retry_secs": 120,
+      "timeout_secs": 5
+    },
+    {
+      "node": "r1",
+      "command": "ping -c 1 -W 2 -I 10.1.1.1 10.1.1.3",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    },
+    {
+      "node": "r2",
+      "command": "ping -c 1 -W 2 -I 10.1.1.2 10.1.1.4",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    },
+    {
+      "node": "r1",
+      "command": "ip route show 10.1.1.6/32",
+      "timeout_secs": 5
+    },
+    {
+      "node": "r1",
+      "command": "ip link set dev r1-eth0 down && ping -c 1 -W 2 -I 10.1.1.1 10.1.1.3",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    },
+    {
+      "node": "r1",
+      "command": "ip link set dev r1-eth0 up && ping -c 1 -W 2 -I 10.1.1.1 10.1.1.3",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    }
+  ]
+}

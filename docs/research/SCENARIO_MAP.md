@@ -69,7 +69,7 @@ ready-made scenario.
 | C2.1 | OSPF adjacency | neighbor reaches `Full`; loopback route via peer; ping succeeds | preset passed (32 attempts, ~52 s) |
 | C2.2 | IS-IS adjacency | neighbor reaches `Up`; route installed; ping succeeds | preset passed (~36 s) |
 | C2.3 | eBGP | session `Established`; prefix exchanged; ping succeeds | preset passed (~5 s) |
-| C2.4 | IGP convergence after cost change | measure time to alternate path; no forwarding loop | new scenario |
+| C2.4 | IGP reconvergence after a ring cut | alternate path and no forwarding loop | `ring-isis` (single-link cut) |
 | C2.5 | BGP withdraw/re-announce | route removal and restoration, no stale best path | new scenario |
 | C2.6 | Protocol authentication / mismatch | bad key is rejected; adjacency never falsely reports success | new scenario |
 
@@ -88,7 +88,7 @@ ready-made scenario.
 | ID | Scenario | Assertions | Current support |
 |---|---|---|---|
 | C4.1 | Trunk down/up | isolation during fault, restoration after repair, measurements before/during/after | `multi-tenant-fault` passed |
-| C4.2 | Access-link failure | only the affected host loses connectivity | new |
+| C4.2 | Access-link failure | only the affected host loses connectivity | `ring-isis` cuts a ring link |
 | C4.3 | Router/daemon crash | routing reconverges; no zombie FRR process | new |
 | C4.4 | Partial startup failure | cleanup removes every created namespace/link/process; nonzero exit | partial (runner cleanup on step failure) |
 | C4.5 | SIGINT/SIGTERM | finish event records interruption; teardown completes | runner traps signals; needs test |

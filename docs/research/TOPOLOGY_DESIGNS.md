@@ -61,10 +61,11 @@ earlier design and add routing, tenancy, or a link-failure model on top.
 | D01 (L2 variant) | `clos-l2-ovs.json` | implemented, redundant OVS + STP |
 | D02/D03 routing partial | `ospf-ovs.json` | implemented, OSPF over OVS |
 | D06a | `dual-home-ovs.json` | implemented, active-backup failover |
-| D12 | failure steps in the OVS scenarios | partial |
+| D12 | failure steps in the OVS and ring scenarios | partial |
+| D07 | `ring-isis.json` | implemented, direct router links |
 
-The remaining D01 L3, D02, D03, D05, D06b, D07–D11 designs are specified below
-and tracked in `ROADMAP.md`.
+The remaining D01 L3, D02, D03, D05, D06b, and D08–D11 designs are specified
+below and tracked in `ROADMAP.md`.
 
 ---
 

@@ -16,6 +16,7 @@ a benchmark, and a report.
 | Capability | Evidence |
 |---|---|
 | Real OVS switch per scenario | `vlan-ovs`, `multi-tenant-ovs`, `multi-tenant-fault-ovs`, `ospf-ovs`, `dual-home-ovs`, `clos-l2-ovs` |
+| Ring/chord routing | `ring-isis`: six routers, 3 chords, ECMP, single-link cut |
 | Rootless Podman | `mnr` `single,3` 6/6; research scenarios; rootless MCP lifecycle; artifacts owned by invoking user |
 | OVS VLAN isolation | same-VLAN pass, cross-VLAN fail |
 | Multi-tenant isolation | full positive + negative matrices across 3 tenants and 3 sites |
@@ -36,7 +37,7 @@ a benchmark, and a report.
 | D04 multi-site VLAN | **implemented** (OVS) | add independent per-tenant fault and restore tests |
 | D05 VXLAN overlay | planned | two-VTEP kernel VXLAN smoke, then tenant overlay |
 | D06 dual-homed links | **partial** — active-backup implemented | OVS LACP experiment; document reference platform |
-| D07 ring/chords | planned | IS-IS ring with chords, ECMP, single-link failure |
+| D07 ring/chords | **implemented** — `ring-isis` | add two-link partition and convergence timing |
 | D08 hub-spoke BGP | planned | prefix filters, default route, no-transit assertion |
 | D09 torus scale | planned | generator + 16/36-router runs, leak and timing budget |
 | D10 service chain | planned | firewall/NAT tenant policy matrix |
@@ -56,13 +57,13 @@ a benchmark, and a report.
 **Remaining P0 hardening:**
 
 - add `command -v ovs-vsctl` and `ovs-vsctl show` to image/run preflight;
-- test `--switch=ovs` equals-form in the wrapper;
-- test Docker fallback as well as Podman;
-- document host OVS module requirement in the quickstart.
+- add a host-module preflight with an actionable error;
+- add a regression test for the wrapper's switch-default logic.
 
 ### P1 — Routing and complex topologies
 
-1. **D07 ring IS-IS** — 6 routers, 3 chords, ECMP, single-link failure.
+1. **D07 ring IS-IS** — implemented as `ring-isis`; add two-link partition and
+   convergence timing.
 2. **D01 Clos eBGP** — 2 spines, 4 leaves, 8 servers, ECMP, leaf/uplink failure.
 3. **D08 hub-spoke BGP** — default route, prefix filter, no transit.
 4. **D02 three-tier OSPF** — areas, summaries, dual-homed aggregation.
@@ -103,9 +104,7 @@ matrix can detect a misconfiguration, and per-VRF evidence is retained.
 
 ### P5 — AI/MCP and rootless
 
-1. Run `mnr-mcp` inside the rootless OVS image and test
-   build/start/ping/stop/release with `switch=ovs,failMode=standalone`.
-2. Add an MCP evaluation script: task success, invalid-call rate, recovery,
+1. MCP rootless lifecycle is verified; add an MCP evaluation script: task success, invalid-call rate, recovery,
    time-to-result.
 3. Verify root-gated tools fail closed outside the container.
 4. Document single-client stdio semantics and no network transport.
@@ -130,7 +129,7 @@ matrix can detect a misconfiguration, and per-VRF evidence is retained.
 
 ### First 30 days
 
-- D07 ring IS-IS and D01 Clos eBGP;
+- D01 Clos eBGP (D07 ring IS-IS is now implemented);
 - D03 VRF-lite prototype;
 - chaos: signals and daemon kill;
 - OVS preflight and wrapper `--switch=ovs` test;

@@ -104,7 +104,7 @@ research-build:
 # run one preset: just research bgp bgp-001
 # scenarios: ospf isis bgp vlan multi-tenant multi-tenant-fault
 # real-switch variants: vlan-ovs multi-tenant-ovs multi-tenant-fault-ovs
-#                      ospf-ovs dual-home-ovs clos-l2-ovs
+#                      ospf-ovs dual-home-ovs clos-l2-ovs ring-isis
 research scenario="ospf" run="research-run":
     mkdir -p "{{root}}/runs"
     docker run --rm --init --privileged --network none \
