@@ -30,9 +30,9 @@ cargo build --workspace        # debug build
 `mn`):
 
 ```bash
-sudo target/release/mnrr --topo single,3                 # build + start + interactive CLI
-sudo target/release/mnrr --topo linear,4 --test pingall  # build + built-in test + stop
-sudo target/release/mnrr --clean                         # clean up leftover netns/links
+sudo target/release/mnr --topo single,3                 # build + start + interactive CLI
+sudo target/release/mnr --topo linear,4 --test pingall  # build + built-in test + stop
+sudo target/release/mnr --clean                         # clean up leftover netns/links
 ```
 
 Without root, the parse → build → plan path works as a **dry run** via the
@@ -133,7 +133,11 @@ TODO / out of v1 scope (D17):
 ## Local checks
 
 Run `just check` and `just test` locally. For kernel-facing tests use a
-disposable privileged Linux environment and `just root-tests-docker`.
+disposable privileged Linux environment and `just root-tests-docker` (the
+recipe builds and installs `mnexec`; without it, live host tests cannot spawn).
+Recent evidence, scenario complexity mapping, and ten research plans are in
+`docs/research/TECHNICAL_REPORT.md`, `docs/research/SCENARIO_MAP.md`, and
+`docs/research/RESEARCH_PLANS.md`.
 
 ## Python bindings & examples
 

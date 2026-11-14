@@ -37,6 +37,10 @@ For a live read-only terminal, start a run with `--hold-secs 120`, then run
 second terminal. The [monitoring guide](monitoring/README.md) covers the
 optional Prometheus, Grafana, Alloy and Loki stack.
 
+The broader validation report, scenario complexity map, and research plans
+live under `docs/research/` (built into the Sphinx docs as the “Research
+program” section).
+
 ## Scenario format
 
 JSON object: `name`, `nodes`, `links`, and `steps`. Nodes have `name` (1–9 ASCII letters, digits or underscores) and `kind` (`host` or `switch`). Links have endpoint names `a`, `b` and optional integer `port_a`, `port_b`. Host port numbering starts at 0, switch numbering at 1; interface names are `<node>-eth<port>` and must fit the kernel's 15-character limit, so a nine-character node name cannot use a three-digit port. Ports can be explicit; omitted ports use Mininet's allocation order. Duplicate names and ports, missing endpoints, self-links, and unknown fields are rejected.

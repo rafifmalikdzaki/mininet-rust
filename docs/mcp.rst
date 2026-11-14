@@ -54,3 +54,15 @@ Never expose ``mnr-mcp`` over a network transport.
 The graph JSON is the same canonical shape the TUI uses
 (``mnr-tui --json``), defined once in ``crates/tui`` and shared with
 ``crates/mcp``.
+
+Validation
+----------
+
+The protocol suite covers handshake/notifications, every tool schema, error
+categories, session state, custom graphs, and non-root rejection. A live
+privileged session also built a custom two-host graph, started it, ran
+``pingall`` at 0% loss, stopped it, and released it. There is no embedded model
+in this repository: agent behaviour is supplied by the MCP client.
+
+See :doc:`research/TECHNICAL_REPORT` for evidence, limits, and the agent/MCP
+research plan (P6).

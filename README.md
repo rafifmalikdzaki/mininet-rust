@@ -109,6 +109,9 @@ Options:
 ## Docs
 
 - [Ship guide](RUST.md) · [Decision log D1–D26](docs/migration/DECISIONS.md)
+- [Technical validation report](docs/research/TECHNICAL_REPORT.md) — evidence, failure paths, limits
+- [Scenario complexity map](docs/research/SCENARIO_MAP.md) — plan → connectivity → protocols → faults → scale → agents
+- [Research plans](docs/research/RESEARCH_PLANS.md) — ten programmes across all features
 - [Benchmarks](docs/migration/BENCHMARKS.md) (python-vs-rust ladder with results)
 - [Review verdict](docs/migration/REVIEW.md) (five-axis)
 - TUI deep-dive: [docs/tui.rst](docs/tui.rst); MCP: [docs/mcp.rst](docs/mcp.rst)

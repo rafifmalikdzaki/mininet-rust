@@ -26,6 +26,12 @@ machine. Create a sample two-host, one-switch network with:
    python-api
 
 .. toctree::
+   :maxdepth: 2
+   :caption: Research program
+
+   research/index
+
+.. toctree::
    :maxdepth: 1
    :caption: Migration ledger (from docs/migration/)
 
@@ -34,6 +40,8 @@ machine. Create a sample two-host, one-switch network with:
    migration/PROGRESS
    migration/TESTING
    migration/BENCHMARKS
+   migration/REVIEW
+   migration/ROADMAP
 
 Indices
 -------

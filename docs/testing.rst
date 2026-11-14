@@ -30,6 +30,29 @@ Privileged (root / disposable Linux host)
 Checks run locally; there is no GitHub Actions pipeline. Network namespaces
 and privileged containers are not security boundaries for untrusted code.
 
+The containerized root gate builds and installs ``mnexec`` before running the
+ignored suites; without it, live tests fail to spawn hosts even though the
+workspace compiles. Use:
+
+.. code-block:: console
+
+   $ just check
+   $ just test
+   $ just root-tests-docker          # privileged, installs mnexec, all #[ignore]d tests
+
+Validation snapshot (2026-11-14, host + privileged Docker)
+----------------------------------------------------------
+
+* unprivileged workspace + monitor: 445 passed, 0 failed, 29 ignored;
+* privileged ignored suites: 29 passed, 0 failed after the ``mnexec`` gate fix;
+* all six research presets passed, plus failure injection (nonzero exit,
+  timeout, missing binary, stdout mismatch) and invalid-scenario rejection;
+* MCP protocol suite 13 passed; live custom-graph build/start/ping/stop/release
+  passed;
+* differential topology ladder 6/6 MATCH; Python bindings 5/5 non-root smoke;
+* Sphinx docs build with zero warnings;
+* full evidence, limits, and recommendations: :doc:`research/TECHNICAL_REPORT`.
+
 Benchmarks & differential scenarios
 -----------------------------------
 
