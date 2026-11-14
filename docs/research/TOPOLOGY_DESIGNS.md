@@ -59,13 +59,14 @@ earlier design and add routing, tenancy, or a link-failure model on top.
 | D04 | `vlan-ovs.json`, `multi-tenant-ovs.json` | implemented, rootless OVS |
 | D04/C4 | `multi-tenant-fault-ovs.json` | implemented, trunk fault/recovery |
 | D01 (L2 variant) | `clos-l2-ovs.json` | implemented, redundant OVS + STP |
+| D01 (L3 variant) | `clos-ebgp.json` | implemented (reduced), eBGP + ECMP + uplink cut |
 | D02/D03 routing partial | `ospf-ovs.json` | implemented, OSPF over OVS |
 | D06a | `dual-home-ovs.json` | implemented, active-backup failover |
 | D12 | failure steps in the OVS and ring scenarios | partial |
 | D07 | `ring-isis.json` | implemented, direct router links |
 
-The remaining D01 L3, D02, D03, D05, D06b, and D08–D11 designs are specified
-below and tracked in `ROADMAP.md`.
+The remaining full D01 scale-out, D02, D03, D05, D06b, and D08–D11 designs are
+specified below and tracked in `ROADMAP.md`.
 
 ---
 
@@ -136,9 +137,12 @@ checked, not just one sampled pair.
 **Purpose.** Modern data-centre fabric: two spines, several leaves, servers
 attached to leaves, eBGP between leaves and spines, ECMP to server prefixes.
 
-**Implementation status.** The redundant L2 fabric variant is implemented as
-`clos-l2-ovs.json` with four OVS switches and STP. The L3 eBGP/ECMP variant
-remains to be built.
+**Implementation status.** Two variants are implemented:
+
+- `clos-l2-ovs.json`: four OVS switches, redundant L2, STP.
+- `clos-ebgp.json`: 2 spine + 2 leaf routers, 2 servers, eBGP, ECMP, uplink cut.
+
+The full 4-leaf/8-server design and leaf-failure matrix remain to be built.
 
 ```text
         sp1 =============== sp2

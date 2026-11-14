@@ -1,0 +1,140 @@
+{
+  "name": "clos-ebgp",
+  "switch": "ovs,failMode=standalone",
+  "nodes": [
+    {
+      "name": "sp1",
+      "kind": "host"
+    },
+    {
+      "name": "sp2",
+      "kind": "host"
+    },
+    {
+      "name": "lf1",
+      "kind": "host"
+    },
+    {
+      "name": "lf2",
+      "kind": "host"
+    },
+    {
+      "name": "h1",
+      "kind": "host"
+    },
+    {
+      "name": "h2",
+      "kind": "host"
+    }
+  ],
+  "links": [
+    {
+      "a": "sp1",
+      "b": "lf1",
+      "port_a": 0,
+      "port_b": 0
+    },
+    {
+      "a": "sp2",
+      "b": "lf1",
+      "port_a": 0,
+      "port_b": 1
+    },
+    {
+      "a": "sp1",
+      "b": "lf2",
+      "port_a": 1,
+      "port_b": 0
+    },
+    {
+      "a": "sp2",
+      "b": "lf2",
+      "port_a": 1,
+      "port_b": 1
+    },
+    {
+      "a": "h1",
+      "b": "lf1",
+      "port_a": 0,
+      "port_b": 2
+    },
+    {
+      "a": "h2",
+      "b": "lf2",
+      "port_a": 0,
+      "port_b": 2
+    }
+  ],
+  "steps": [
+    {
+      "node": "sp1",
+      "command": "set -e; ip addr flush dev sp1-eth0; ip addr add 10.0.11.2/30 dev sp1-eth0; ip link set sp1-eth0 up; ip addr flush dev sp1-eth1; ip addr add 10.0.21.2/30 dev sp1-eth1; ip link set sp1-eth1 up; ip addr add 10.255.0.1/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-clos-sp1; mkdir -p $d /etc/frr/mnr-clos-sp1; : > /etc/frr/mnr-clos-sp1/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' sp1 \"$d\" > $d/zebra.conf; printf 'hostname sp1\\nlog file %s/bgpd-runtime.log\\nrouter bgp 65000\\n bgp router-id 10.255.0.1\\n no bgp ebgp-requires-policy\\n neighbor 10.0.11.1 remote-as 65001\\n neighbor 10.0.21.1 remote-as 65002\\n address-family ipv4 unicast\\n  network 10.255.0.1/32\\n  maximum-paths 2\\n exit-address-family\\n' \"$d\" > $d/bgpd.conf; /usr/lib/frr/zebra -d -N mnr-clos-sp1 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/bgpd -d -N mnr-clos-sp1 -f $d/bgpd.conf -i $d/bgpd.pid -z $d/zserv.api >$d/bgpd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "sp2",
+      "command": "set -e; ip addr flush dev sp2-eth0; ip addr add 10.0.12.2/30 dev sp2-eth0; ip link set sp2-eth0 up; ip addr flush dev sp2-eth1; ip addr add 10.0.22.2/30 dev sp2-eth1; ip link set sp2-eth1 up; ip addr add 10.255.0.2/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-clos-sp2; mkdir -p $d /etc/frr/mnr-clos-sp2; : > /etc/frr/mnr-clos-sp2/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' sp2 \"$d\" > $d/zebra.conf; printf 'hostname sp2\\nlog file %s/bgpd-runtime.log\\nrouter bgp 65000\\n bgp router-id 10.255.0.2\\n no bgp ebgp-requires-policy\\n neighbor 10.0.12.1 remote-as 65001\\n neighbor 10.0.22.1 remote-as 65002\\n address-family ipv4 unicast\\n  network 10.255.0.2/32\\n  maximum-paths 2\\n exit-address-family\\n' \"$d\" > $d/bgpd.conf; /usr/lib/frr/zebra -d -N mnr-clos-sp2 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/bgpd -d -N mnr-clos-sp2 -f $d/bgpd.conf -i $d/bgpd.pid -z $d/zserv.api >$d/bgpd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "lf1",
+      "command": "set -e; ip addr flush dev lf1-eth0; ip addr add 10.0.11.1/30 dev lf1-eth0; ip link set lf1-eth0 up; ip addr flush dev lf1-eth1; ip addr add 10.0.12.1/30 dev lf1-eth1; ip link set lf1-eth1 up; ip addr flush dev lf1-eth2; ip addr add 10.10.1.1/24 dev lf1-eth2; ip link set lf1-eth2 up; ip addr add 10.255.0.11/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-clos-lf1; mkdir -p $d /etc/frr/mnr-clos-lf1; : > /etc/frr/mnr-clos-lf1/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' lf1 \"$d\" > $d/zebra.conf; printf 'hostname lf1\\nlog file %s/bgpd-runtime.log\\nrouter bgp 65001\\n bgp router-id 10.255.0.11\\n no bgp ebgp-requires-policy\\n neighbor 10.0.11.2 remote-as 65000\\n neighbor 10.0.12.2 remote-as 65000\\n address-family ipv4 unicast\\n  network 10.255.0.11/32\\n  network 10.10.1.0/24\\n  maximum-paths 2\\n exit-address-family\\n' \"$d\" > $d/bgpd.conf; /usr/lib/frr/zebra -d -N mnr-clos-lf1 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/bgpd -d -N mnr-clos-lf1 -f $d/bgpd.conf -i $d/bgpd.pid -z $d/zserv.api >$d/bgpd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "lf2",
+      "command": "set -e; ip addr flush dev lf2-eth0; ip addr add 10.0.21.1/30 dev lf2-eth0; ip link set lf2-eth0 up; ip addr flush dev lf2-eth1; ip addr add 10.0.22.1/30 dev lf2-eth1; ip link set lf2-eth1 up; ip addr flush dev lf2-eth2; ip addr add 10.10.2.1/24 dev lf2-eth2; ip link set lf2-eth2 up; ip addr add 10.255.0.12/32 dev lo; ip link set lo up; sysctl -qw net.ipv4.ip_forward=1; d=/var/run/frr/mnr-clos-lf2; mkdir -p $d /etc/frr/mnr-clos-lf2; : > /etc/frr/mnr-clos-lf2/vtysh.conf; chown frr:frr $d; chmod 775 $d; printf 'hostname %s\\\\nlog file %s/zebra-runtime.log\\\\n' lf2 \"$d\" > $d/zebra.conf; printf 'hostname lf2\\nlog file %s/bgpd-runtime.log\\nrouter bgp 65002\\n bgp router-id 10.255.0.12\\n no bgp ebgp-requires-policy\\n neighbor 10.0.21.2 remote-as 65000\\n neighbor 10.0.22.2 remote-as 65000\\n address-family ipv4 unicast\\n  network 10.255.0.12/32\\n  network 10.10.2.0/24\\n  maximum-paths 2\\n exit-address-family\\n' \"$d\" > $d/bgpd.conf; /usr/lib/frr/zebra -d -N mnr-clos-lf2 -f $d/zebra.conf -i $d/zebra.pid -z $d/zserv.api >$d/zebra.log 2>&1; /usr/lib/frr/bgpd -d -N mnr-clos-lf2 -f $d/bgpd.conf -i $d/bgpd.pid -z $d/zserv.api >$d/bgpd.log 2>&1",
+      "timeout_secs": 30
+    },
+    {
+      "node": "h1",
+      "command": "ip addr flush dev h1-eth0; ip addr add 10.10.1.2/24 dev h1-eth0; ip link set h1-eth0 up; ip route add default via 10.10.1.1",
+      "timeout_secs": 10
+    },
+    {
+      "node": "h2",
+      "command": "ip addr flush dev h2-eth0; ip addr add 10.10.2.2/24 dev h2-eth0; ip link set h2-eth0 up; ip route add default via 10.10.2.1",
+      "timeout_secs": 10
+    },
+    {
+      "node": "lf1",
+      "command": "for n in 10.0.11.2 10.0.12.2; do vtysh -N mnr-clos-lf1 -c \"show bgp neighbors $n\" | grep -q 'BGP state = Established' || exit 1; done",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    },
+    {
+      "node": "lf1",
+      "command": "n=$(ip route show 10.10.2.0/24 | grep -c nexthop); test \"$n\" -ge 2 && ip route show 10.10.2.0/24",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    },
+    {
+      "node": "h1",
+      "command": "ping -c 1 -W 2 10.10.2.2",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    },
+    {
+      "node": "lf1",
+      "command": "ip link set dev lf1-eth0 down",
+      "timeout_secs": 5
+    },
+    {
+      "node": "h1",
+      "command": "ping -c 1 -W 2 10.10.2.2",
+      "retry_secs": 90,
+      "timeout_secs": 5
+    },
+    {
+      "node": "lf1",
+      "command": "ip link set dev lf1-eth0 up",
+      "timeout_secs": 5
+    },
+    {
+      "node": "h1",
+      "command": "ping -c 1 -W 2 10.10.2.2",
+      "retry_secs": 60,
+      "timeout_secs": 5
+    }
+  ]
+}

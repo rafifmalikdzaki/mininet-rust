@@ -16,6 +16,7 @@ a benchmark, and a report.
 | Capability | Evidence |
 |---|---|
 | Real OVS switch per scenario | `vlan-ovs`, `multi-tenant-ovs`, `multi-tenant-fault-ovs`, `ospf-ovs`, `dual-home-ovs`, `clos-l2-ovs` |
+| L3 Clos/eBGP | `clos-ebgp`: 2 spines, 2 leaves, 2 servers, ECMP, uplink cut |
 | Ring/chord routing | `ring-isis`: six routers, 3 chords, ECMP, single-link cut |
 | Rootless Podman | `mnr` `single,3` 6/6; research scenarios; rootless MCP lifecycle; artifacts owned by invoking user |
 | OVS VLAN isolation | same-VLAN pass, cross-VLAN fail |
@@ -31,7 +32,7 @@ a benchmark, and a report.
 
 | Design | Status | Next action |
 |---|---|---|
-| D01 Clos L3 eBGP | **partial** — L2 leaf-spine with STP implemented (`clos-l2-ovs`) | add router-hosts, eBGP, ECMP, uplink/leaf failure |
+| D01 Clos L3 eBGP | **implemented (reduced)** — `clos-ebgp` (2 spines, 2 leaves, 2 servers, ECMP, uplink cut) | expand to 4 leaves/8 servers and leaf failure |
 | D02 three-tier hierarchy | planned | core/agg/access, OSPF areas, VLAN access/trunk |
 | D03 VRF-lite tenancy | planned | prototype Linux VRF + FRR on OVS-attached PEs |
 | D04 multi-site VLAN | **implemented** (OVS) | add independent per-tenant fault and restore tests |
@@ -56,15 +57,15 @@ a benchmark, and a report.
 
 **Remaining P0 hardening:**
 
-- add `command -v ovs-vsctl` and `ovs-vsctl show` to image/run preflight;
-- add a host-module preflight with an actionable error;
-- add a regression test for the wrapper's switch-default logic.
+- add `command -v ovs-vsctl` / `ovs-vsctl show` readiness checks inside scenarios;
+- add a shell regression test for the wrapper's switch-default and module-preflight branches.
 
 ### P1 — Routing and complex topologies
 
 1. **D07 ring IS-IS** — implemented as `ring-isis`; add two-link partition and
    convergence timing.
-2. **D01 Clos eBGP** — 2 spines, 4 leaves, 8 servers, ECMP, leaf/uplink failure.
+2. **D01 Clos eBGP** — implemented as `clos-ebgp` with 2 leaves/2 servers; expand
+   to 4 leaves/8 servers and add leaf failure.
 3. **D08 hub-spoke BGP** — default route, prefix filter, no transit.
 4. **D02 three-tier OSPF** — areas, summaries, dual-homed aggregation.
 5. **D09 torus** — generated 4×4 then 6×6 fabric; scale and leak tests.
@@ -129,10 +130,10 @@ matrix can detect a misconfiguration, and per-VRF evidence is retained.
 
 ### First 30 days
 
-- D01 Clos eBGP (D07 ring IS-IS is now implemented);
+- D01 Clos eBGP is now implemented (reduced); focus on expansion and failure coverage;
 - D03 VRF-lite prototype;
 - chaos: signals and daemon kill;
-- OVS preflight and wrapper `--switch=ovs` test;
+- OVS preflight and wrapper `--switch=ovs` test are done; extend to a shell regression test.
 - update benchmark to 5 samples with release build.
 
 ### 60 days

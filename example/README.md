@@ -43,6 +43,7 @@ Choose a file under `/scenarios/` in the container:
 | `dual-home-ovs.json` | Active-backup bond across two OVS ports |
 | `clos-l2-ovs.json` | Redundant leaf-spine OVS fabric with STP |
 | `ring-isis.json` | Six-router ring with chords, IS-IS, ECMP, and a link cut |
+| `clos-ebgp.json` | L3 leaf/spine eBGP, ECMP, and an uplink failure |
 | `multi-tenant.json` | Three sites and three isolated tenants using overlapping addresses |
 | `multi-tenant-fault.json` | Multi-tenant topology with trunk failure and recovery |
 

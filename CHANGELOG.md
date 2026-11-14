@@ -22,6 +22,7 @@ tagged.
   - `dual-home-ovs` — active-backup bonding and failover.
   - `clos-l2-ovs` — two-spine/two-leaf OVS fabric with STP.
   - `ring-isis` — six-router ring with chords, IS-IS, ECMP, and a link cut.
+- `clos-ebgp` — L3 spine/leaf eBGP, two ECMP next hops, and an uplink cut.
 - OVS-based benchmark defaults and a rootless three-sample benchmark report.
 - Real-switch/rootless validation report and a project roadmap covering
   D01–D12 designs, 30/60/90-day workstreams, and acceptance gates.
@@ -35,7 +36,8 @@ tagged.
 
 - `scripts/mnr-container.sh` prefers real OVS, adds `--nolistenport`, and no
   longer forces `--userns=keep-id` (which prevented OVS from creating its
-  runtime paths).
+  runtime paths). It now fails early if OVS is requested but the host module
+  is not loaded.
 - The research runner and benchmark use real OVS by default; `BENCH_SWITCH`
   and `BENCH_RUNS` remain overridable.
 - Benchmark input validation rejects non-integer or zero `BENCH_RUNS` instead

@@ -30,6 +30,7 @@ Verified outcomes:
 | Active-backup bond | active-member failure and recovery passed |
 | Redundant leaf-spine | 4 OVS switches, STP, full reachability passed |
 | Ring/chord IS-IS | 6 routers, 9 links, adjacency, ECMP ping, link cut passed |
+| L3 Clos/eBGP | 2 spines, 2 leaves, 2 servers; ECMP and uplink cut passed |
 | Rootless MCP lifecycle | build/start/ping 2/2/stop/release passed |
 | Rootless benchmark | 6 topologies × 3 samples, 12/12 cells 0% loss |
 | Workspace tests | 447 passed, 0 failed, 29 ignored (root suite separately 29/29) |
@@ -144,6 +145,7 @@ and loaded with `docker save ... | podman load`.
 | `ospf-ovs.json` | 3 / 2 / 5 | OSPF through a real OVS switch |
 | `dual-home-ovs.json` | 3 / 3 / 5 | active-backup bond failover |
 | `clos-l2-ovs.json` | 8 / 8 / 7 | redundant leaf-spine with STP |
+| `clos-ebgp.json` | 6 / 6 / 12 | L3 leaf/spine eBGP, ECMP, uplink cut |
 | `ring-isis.json` | 6 / 9 / 12 | ring + chords, IS-IS, ECMP, link cut |
 
 The legacy `vlan`, `multi-tenant`, and `multi-tenant-fault` scenarios remain
@@ -243,6 +245,27 @@ Result rootless: **success**, 12 steps. The first adjacency/ping needed 12
 retries; route and failure checks then passed. The scenario is intentionally
 retry-tolerant because FRR and IS-IS startup dominate.
 
+### 4.8 L3 Clos eBGP (`clos-ebgp`)
+
+Reduced Clos:
+
+- 2 spine routers (`sp1`, `sp2`), 2 leaf routers (`lf1`, `lf2`);
+- 2 servers (`h1`, `h2`);
+- leaf-to-both-spines full mesh;
+- loopbacks `10.255.0.1/2/11/12`;
+- eBGP: spines AS 65000, leaves 65001/65002;
+- leaves advertise their server `/24`; `maximum-paths 2`;
+- leaf route to the remote server prefix has **two nexthops**;
+- h1 reaches h2;
+- `lf1-eth0` uplink is cut, h1 still reaches h2 via the other spine;
+- uplink restored, reachability remains.
+
+Result: **success**, 12 steps. The ECMP assertion needed one retry before two
+next hops appeared; one failure-path attempt initially used the wrong source
+address (router loopback rather than server), which was fixed by pinging from
+`h1`. This is D01 in reduced form; the catalogue's 4-leaf/8-server expansion
+and leaf-failure matrix remain.
+
 ## 5. Benchmarks
 
 ### 5.1 Environment
@@ -304,10 +327,11 @@ use is positional: `just bench-rootless 1`.
 | MCP rootless live | custom graph 2/2, 0% loss |
 | Python bindings | 5/5 non-root smoke |
 | Differential topology ladder | 6/6 MATCH |
-| OVS scenarios | 7/7 implemented scenarios pass rootless |
+| OVS/live scenarios | 8/8 implemented routed/tenant scenarios pass rootless |
 | Docs | Sphinx build succeeds, 0 warnings |
 | Shell syntax | `sh -n` clean |
 | Docker fallback | OVS `single,3` 6/6 |
+| Rootless OVS preflight | host module check and `lxbr` fallback verified |
 | Podman rootless | OVS `single,3` 6/6; scenario runs pass |
 
 ## 7. Defects and resolutions
@@ -384,6 +408,16 @@ varies.
 **Fix:** keep bounded retries on the actual reachability assertion. Result:
 12 retries, then pass. This is documented rather than hidden.
 
+### 7.8 Missing host OVS module was only documented
+
+**Symptom:** a rootless user could start a container with an OVS scenario only
+to fail inside the container with an opaque datapath error.
+
+**Fix:** `scripts/mnr-container.sh` now checks `/proc/modules` before starting
+when OVS is requested, prints the exact `modprobe`/`modules-load.d` commands,
+and exits 3. `--switch lxbr` remains the fallback. The check was verified on
+the loaded host for both OVS and LinuxBridge paths.
+
 ## 8. Rootless operating model
 
 ### Host requirements
@@ -440,7 +474,7 @@ The full status is maintained in `ROADMAP.md`. Summary:
 
 | Design | State | Next |
 |---|---|---|
-| D01 Clos L3 eBGP | L2 variant only | router-hosts, eBGP, ECMP, failures |
+| D01 Clos L3 eBGP | reduced implementation | 4 leaves/8 servers, leaf failure |
 | D02 three-tier | planned | OSPF areas, summaries, VLAN access |
 | D03 VRF-lite | planned | Linux VRF + FRR, 8/8 and 48/48 matrices |
 | D04 multi-site VLAN | implemented | add independent per-tenant faults |
@@ -458,7 +492,7 @@ Immediate next increments:
 1. D01 Clos eBGP.
 2. D03 VRF-lite.
 3. Chaos signal/daemon-kill suite.
-4. OVS preflight (host module + switch readiness).
+4. OVS switch-readiness checks inside scenarios (host-module preflight is done).
 5. Five-sample release benchmark and scale run.
 
 ## 10. Risks
