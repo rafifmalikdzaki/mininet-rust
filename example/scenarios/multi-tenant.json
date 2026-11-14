@@ -1,5 +1,6 @@
 {
   "name":"multi-tenant",
+  "switch":"lxbr",
   "nodes":[
     {"name":"s1","kind":"switch"},{"name":"s2","kind":"switch"},{"name":"s3","kind":"switch"},
     {"name":"a1","kind":"host"},{"name":"a2","kind":"host"},{"name":"a3","kind":"host"},

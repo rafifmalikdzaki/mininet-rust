@@ -1,5 +1,6 @@
 {
   "name": "multi-tenant-fault",
+  "switch": "lxbr",
   "nodes": [
     {
       "name": "s1",

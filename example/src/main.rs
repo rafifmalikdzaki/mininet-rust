@@ -25,6 +25,12 @@ struct Scenario {
     nodes: Vec<Node>,
     links: Vec<Link>,
     steps: Vec<Step>,
+    /// `--switch` spec used for `switch` nodes. The default is a real OVS
+    /// switch in standalone mode: it forwards without a controller, which is
+    /// what the research runner's `controller: None` requires. Use `lxbr`
+    /// explicitly for the legacy LinuxBridge scenarios.
+    #[serde(default = "default_switch")]
+    switch: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -60,6 +66,9 @@ struct Step {
 fn default_timeout() -> u64 {
     30
 }
+fn default_switch() -> String {
+    "ovs,failMode=standalone".to_string()
+}
 
 fn validate(s: &Scenario) -> Result<()> {
     if s.name.is_empty()
@@ -71,6 +80,9 @@ fn validate(s: &Scenario) -> Result<()> {
         || s.nodes.is_empty()
     {
         return Err("scenario name must contain only ASCII letters, digits, underscores or hyphens (1–64 characters), and nodes must not be empty".into());
+    }
+    if s.switch.trim().is_empty() {
+        return Err("switch spec must not be empty".into());
     }
     let mut nodes = HashMap::new();
     for node in &s.nodes {
@@ -391,7 +403,7 @@ fn run(s: &Scenario, dir: &Path, hold_secs: u64) -> Result<()> {
         topo: Some(topo),
         build: false,
         controller: None,
-        switch_spec: "lxbr".into(),
+        switch_spec: s.switch.clone(),
         ..Default::default()
     };
     let mut net = Network {
@@ -610,6 +622,25 @@ mod tests {
     fn accepts_arbitrary_host_switch_topology() {
         let s: Scenario = serde_json::from_str(r#"{"name":"test","nodes":[{"name":"r1","kind":"host"},{"name":"s1","kind":"switch"}],"links":[{"a":"r1","b":"s1"}],"steps":[{"node":"r1","command":"true"}]}"#).unwrap();
         assert!(validate(&s).is_ok());
+    }
+
+    #[test]
+    fn switch_defaults_to_ovs_standalone() {
+        let s: Scenario = serde_json::from_str(
+            r#"{"name":"test","nodes":[{"name":"h1","kind":"host"}],"links":[],"steps":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(s.switch, "ovs,failMode=standalone");
+        assert!(validate(&s).is_ok());
+    }
+
+    #[test]
+    fn switch_field_is_parsed_and_empty_is_rejected() {
+        let s: Scenario = serde_json::from_str(r#"{"name":"test","switch":"lxbr","nodes":[{"name":"s1","kind":"switch"}],"links":[],"steps":[]}"#).unwrap();
+        assert_eq!(s.switch, "lxbr");
+        assert!(validate(&s).is_ok());
+        let empty: Scenario = serde_json::from_str(r#"{"name":"test","switch":"  ","nodes":[{"name":"s1","kind":"switch"}],"links":[],"steps":[]}"#).unwrap();
+        assert!(validate(&empty).is_err());
     }
 
     #[test]

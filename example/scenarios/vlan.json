@@ -1,5 +1,6 @@
 {
   "name":"vlan",
+  "switch":"lxbr",
   "nodes":[{"name":"s1","kind":"switch"},{"name":"h1","kind":"host"},{"name":"h2","kind":"host"},{"name":"h3","kind":"host"},{"name":"h4","kind":"host"}],
   "links":[{"a":"h1","b":"s1","port_a":0,"port_b":1},{"a":"h2","b":"s1","port_a":0,"port_b":2},{"a":"h3","b":"s1","port_a":0,"port_b":3},{"a":"h4","b":"s1","port_a":0,"port_b":4}],
   "steps":[
