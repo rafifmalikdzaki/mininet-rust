@@ -48,6 +48,8 @@ if ! command -v mnexec >/dev/null 2>&1; then
 fi
 
 PY_MN="python3 $REPO_ROOT/legacy/bin/mn"
+# The Python reference package lives in legacy/ now
+export PYTHONPATH="$REPO_ROOT/legacy${PYTHONPATH:+:$PYTHONPATH}"
 
 # --- helpers ---------------------------------------------------------------
 
@@ -64,10 +66,18 @@ run_once() {
     esac
     t0=$(now_ns)
     # shellcheck disable=SC2086
-    out=$(sh -c "$cmd" 2>&1) || true
+    if ! out=$(sh -c "$cmd" 2>&1); then
+        printf '%s\n' "$out" >&2
+        printf 'bench_scenarios: %s %s failed to run\n' "$impl" "$spec" >&2
+        return 1
+    fi
     t1=$(now_ns)
     wall=$(awk -v a="$t0" -v b="$t1" 'BEGIN {printf "%.3f", (b-a)/1e9}')
-    loss=$(printf '%s\n' "$out" | grep -o '[0-9]*% dropped' | tail -1 | grep -o '[0-9]*' || echo 100)
+    loss=$(printf '%s\n' "$out" | grep -o '[0-9]*% dropped' | tail -1 | grep -o '[0-9]*') || {
+        printf '%s\n' "$out" >&2
+        printf 'bench_scenarios: %s %s produced no ping-loss line\n' "$impl" "$spec" >&2
+        return 1
+    }
     echo "$wall $loss"
 }
 
@@ -90,6 +100,8 @@ PYEOF
 
 # --- main ------------------------------------------------------------------
 
+report=$(mktemp)
+trap 'rm -f "$report"' EXIT
 {
 echo "# Differential benchmark: Python mininet vs Rust mnr"
 echo
@@ -104,7 +116,7 @@ echo "|---|---|---|---|---|---|---|"
 for spec in $BENCH_TOPOS; do
     nodes=$(nodes_of "$spec")
     for impl in py rs; do
-        run_once "$impl" "$spec" >/dev/null 2>&1 || true   # warmup
+        run_once "$impl" "$spec" >/dev/null   # warmup; failure aborts the run
         walls=""; losses=""
         i=1
         while [ "$i" -le "$BENCH_RUNS" ]; do
@@ -123,4 +135,8 @@ for spec in $BENCH_TOPOS; do
 done
 echo
 echo "Complexity ladder: single,3 (4 nodes) < linear,4 < linear,10 < tree,2,2 (7) < tree,3,2 (15) < tree,3,3 (40)."
-} | tee ${BENCH_OUT:-/dev/stdout}
+} > "$report"
+if [ -n "$BENCH_OUT" ]; then
+    cp "$report" "$BENCH_OUT"
+fi
+cat "$report"
