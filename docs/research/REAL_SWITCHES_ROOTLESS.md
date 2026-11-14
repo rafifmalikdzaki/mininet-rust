@@ -120,6 +120,76 @@ The rootless container cannot load the OVS kernel module. The host must already
 provide it. If the module is absent, rootless OVS cannot use the kernel
 datapath; use a rootful disposable host or run the LinuxBridge fallback.
 
+#### Install and load the module on the host
+
+The kernel module ships with the kernel package, not with the OVS userspace
+package. Install a kernel/package set that includes `openvswitch.ko`, then load
+it as root.
+
+Arch Linux (this host):
+
+```console
+# userspace tools; the module is in the running kernel package (linux/linux-zen)
+$ sudo pacman -S openvswitch
+$ sudo modprobe openvswitch
+$ lsmod | grep openvswitch
+openvswitch           253952  0
+$ modinfo -F filename openvswitch
+/lib/modules/$(uname -r)/kernel/net/openvswitch/openvswitch.ko.zst
+```
+
+Debian/Ubuntu:
+
+```console
+$ sudo apt install openvswitch-switch linux-modules-extra-$(uname -r)
+$ sudo modprobe openvswitch
+$ lsmod | grep openvswitch
+```
+
+Fedora:
+
+```console
+$ sudo dnf install openvswitch kernel-modules-extra
+$ sudo modprobe openvswitch
+$ lsmod | grep openvswitch
+```
+
+Persist the module across reboot:
+
+```console
+$ echo openvswitch | sudo tee /etc/modules-load.d/openvswitch.conf
+$ sudo systemctl enable --now systemd-modules-load.service
+# after reboot:
+$ lsmod | grep openvswitch
+```
+
+Secure Boot: distribution kernels ship a signed module. If `modprobe` reports
+an invalid signature, check `mokutil --sb-state`; use the distribution kernel or
+sign/enroll the module for your custom kernel.
+
+If `modprobe` says `Module openvswitch not found`, the running kernel's module
+tree is missing or mismatched. Install the module package matching
+`uname -r`, reboot into that kernel, and check `/lib/modules/$(uname -r)`.
+If the module is loaded but OVS tools fail, that is a userspace/daemon problem
+(`ovsdb-server`/`ovs-vswitchd`), not a kernel-module problem.
+
+On a host that uses OVS outside containers, also start its userspace daemons:
+Arch `ovsdb-server` + `ovs-vswitchd`, Debian/Ubuntu
+`openvswitch-switch.service`. The research and rootless images start their own
+daemons inside the container; do not mount the host OVS database into them.
+
+Verify the kernel datapath:
+
+```console
+$ sudo ovs-vsctl get Open_vSwitch . datapath_types
+[system, netdev]
+$ sudo ovs-appctl dpif/show
+system@ovs-system: hit:... missed:...
+```
+
+`system@ovs-system` is the kernel datapath. `netdev` is userspace and does not
+satisfy the rootless kernel-module prerequisite.
+
 ### Build and run
 
 ```console
